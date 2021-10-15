@@ -1,14 +1,29 @@
-import pyomo.environ as pyo
-from pyomo.opt import SolverFactory
+# import pyomo.environ as pyo
+# from pyomo.opt import SolverFactory
 import pandas as pd
+import os 
 
 class Data():
     def __init__(self, data_folder: str='../data'):
         self.data_folder = data_folder
         self.aircraft_classes_dict = None
+        self.handling_rates_dict = None
     
-    def get_aircraft_classes():
-        if aircraft_classes_dict is None:
+    def get_aircraft_classes(self):
+        if self.aircraft_classes_dict is None:
+            aircraft_folder = os.path.join(self.data_folder, 'AirCraftClasses_Public.csv')
+            aircraft_pd = pd.read_csv(aircraft_folder)
+            self.aircraft_classes_dict = aircraft_pd.set_index('Aircraft_Class').to_dict()
+        
+        return self.aircraft_classes_dict
+    
+    def get_handling_rates(self):
+        if self.handling_rates_dict is None:
+            handling_rates_folder = os.path.join(self.data_folder, 'Handling_Rates_Public.csv')
+            handling_rates_pd = pd.read_csv(handling_rates_folder)
+            self.handling_rates_dict = handling_rates_pd.set_index('Name').to_dict()
+        return self.handling_rates_dict
+
 
 
 
@@ -32,7 +47,9 @@ class OptimizeDay:
 
 
 if __name__ == "__main__":
-    Data
+    d = Data()
+
+    d.get_handling_rates()
 
 
 
