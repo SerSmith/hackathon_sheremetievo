@@ -4,7 +4,7 @@ import pandas as pd
 import os 
 from  itertools import product
 from datetime import datetime, timedelta
-
+import numpy as np
 
 class Data():
     def __init__(self, data_folder: str='../data'):
@@ -55,6 +55,19 @@ class Data():
         return self.flights_dict 
 
 
+class DataExtended(Data):
+    def __init__(self, data_folder: str='../data', bus_capacity:int = 80 ):
+        super().__init__(data_folder)
+        self.bus_capacity = bus_capacity
+        
+
+    def get_flights(self):
+        flights = super().get_flights()
+        flights['quantity_busses'] = {np.ceil(flights['flight_PAX'][key] / self.bus_capacity) for key in flights['flight_PAX'].keys()}
+        return flights
+
+
+
 
 
 class OptimizationSolution():
@@ -71,7 +84,8 @@ class OptimizeDay:
     def __init__(self, data: Data):
         self.model = None
         self.data = data
-        pass
+        self.bus_capacity = bus_capacity
+
     
     @staticmethod
     def __get_times(start_dt, end_dt):
@@ -86,16 +100,17 @@ class OptimizeDay:
     def airport_taxiing_cost_func(self, flight):
         # Стоимость руления определяется как время руления (однозначно определяется МС ВС) умноженное на тариф за минуту руления
         # TODO учесть, что некорректно может считаться из-замножественного time
-        return sum([self.model.AS_occupied[flight, stand, time] *
+        return sum([self.model.AS_occupied[flight, stand] *
                     AIRCRAFT_STANDS_DATA['Taxiing_Time'][stand] *
                     HANDLING_RATES['Aircraft_Taxiing_Cost_per_Minute']
-                    for stand, time in product(AIRCRAFT_STANDS, TIMES)]) 
+                    for stand in AIRCRAFT_STANDS])
+    
 
 
 
     def make_model(self, start_dt=datetime(2019, 5, 17, 0, 0), end_dt=datetime(2019, 5, 17, 23, 55)):
     
-        FLIGHTS_DATA = self.data.get_flights()
+        FLIGHTS_DATA = self.__get_flights_extended()
         AIRCRAFT_STANDS_DATA = self.data.get_aircraft_stands()
         HANDLING_RATES = self.data.get_handling_rates()
 
@@ -145,12 +160,15 @@ class OptimizeDay:
         # Cтоимость руления по аэродрому
         self.model.airport_taxiing_cost = pyo.Expression(FLIGHTS, rule=self.airport_taxiing_cost_func)
 
-        def busses_cost_func(self):
+
+        def busses_cost_func(self, flight):
             # При использовании удалённых МС ВС для посадки/высадки пассажиров необходимо использовать перронные автобусы. Вместимость одного перронного автобуса 80 пассажиров. Время движения автобуса от терминала и стоимость минуты использования автобуса указаны в соответствующих таблицах.
-            return sum([self.model.AS_occupied[flight, stand, time] *
-                        AIRCRAFT_STANDS_DATA['Taxiing_Time'][stand] *
-                        HANDLING_RATES['Aircraft_Taxiing_Cost_per_Minute']
-                        for stand, time in product(AIRCRAFT_STANDS, TIMES)]) 
+            return sum([self.model.AS_occupied[flight, stand] *
+                        FLIGHTS_DATA['quantity_busses'][flight] *
+                        AIRCRAFT_STANDS_DATA[FLIGHTS_DATA['flight_terminal_#'][flight]][stand] *
+                        teletrap_can_be_used(flight, stand)
+                        for stand in AIRCRAFT_STANDS]) 
+
 
         # Стоимость использования перронных автобусов для посадки/высадки пассажиров
         self.model.busses_cost = pyo.Expression(FLIGHTS, rule=self.busses_cost_func)
@@ -178,9 +196,14 @@ class OptimizeDay:
 
 
 if __name__ == "__main__":
-    d = Data()
-    opt = OptimizeDay(d)
-    opt.make_model()
+    d = DataExtended()
+    # opt = OptimizeDay(d)
+    # opt.make_model()
+
+    t = d.get_flights()
+
+    print(t.keys())
+
 
 
 # Все места стоянок делятся на контактные (посадка/высадка через телетрап) и удалённые (посадка/высадка 
