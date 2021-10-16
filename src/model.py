@@ -85,12 +85,16 @@ class OptimizeDay:
     # Cтоимость руления по аэродрому
     def airport_taxiing_cost_func(self, flight):
         # Стоимость руления определяется как время руления (однозначно определяется МС ВС) умноженное на тариф за минуту руления
-    return sum([self.model.AS_occupied[flight, stand, time] * AIRCRAFT_STANDS_DATA['Taxiing_Time'][stand] * HANDLING_RATES['Aircraft_Taxiing_Cost_per_Minute'] for stand, time in product(AIRCRAFT_STANDS, TIMES)]) 
+        # TODO учесть, что некорректно может считаться из-замножественного time
+        return sum([self.model.AS_occupied[flight, stand, time] *
+                    AIRCRAFT_STANDS_DATA['Taxiing_Time'][stand] *
+                    HANDLING_RATES['Aircraft_Taxiing_Cost_per_Minute']
+                    for stand, time in product(AIRCRAFT_STANDS, TIMES)]) 
 
 
 
-    def make_model(self, start_dt = datetime.datetime(2019, 5, 17, 0, 0), end_dt = datetime.datetime(2019, 5, 17, 23, 55)):
-
+    def make_model(self, start_dt=datetime.datetime(2019, 5, 17, 0, 0), end_dt=datetime.datetime(2019, 5, 17, 23, 55)):
+    
         FLIGHTS_DATA = self.data.get_flights()
         AIRCRAFT_STANDS_DATA = self.data.get_aircraft_stands()
         HANDLING_RATES = self.data.get_handling_rates()
@@ -101,20 +105,32 @@ class OptimizeDay:
         # Места стоянки
         AIRCRAFT_STANDS = AIRCRAFT_STANDS.keys()
         # Временные отрезки
-        TIMES = self.__get_times(start_dt = start_dt, end_dt = end_dt)
+        TIMES = self.__get_times(start_dt=start_dt, end_dt=end_dt)
 
 
         self.model = pyo.ConcreteModel()
     
-        # занимаемые места (Рейс * МС * 5минутки) - переменные
-        self.model.AS_occupied = pyo.Var(FLIGHTS, AIRCRAFT_STANDS, TIMES, within=pyo.Binary, initialize=0)
+        # занимаемые места (Рейс * МC) - переменные
+        self.model.AS_occupied = pyo.Var(FLIGHTS, AIRCRAFT_STANDS, within=pyo.Binary, initialize=0)
+
+        def time_calculate_func(flight, aircraft_stand, time):
+            pass
+
+        # занимаемые времена с учетом времени
+        self.model.AS_time_occupied = pyo.Expression(FLIGHTS, AIRCRAFT_STANDS, TIMES, rule=self.time_calculate_func)
 
         # Cтоимость руления по аэродрому
         self.model.airport_taxiing_cost = pyo.Expression(FLIGHTS, rule=self.airport_taxiing_cost_func)
 
+        def busses_cost_func(self):
+            # При использовании удалённых МС ВС для посадки/высадки пассажиров необходимо использовать перронные автобусы. Вместимость одного перронного автобуса 80 пассажиров. Время движения автобуса от терминала и стоимость минуты использования автобуса указаны в соответствующих таблицах.
+            return sum([self.model.AS_occupied[flight, stand, time] *
+                        AIRCRAFT_STANDS_DATA['Taxiing_Time'][stand] *
+                        HANDLING_RATES['Aircraft_Taxiing_Cost_per_Minute']
+                        for stand, time in product(AIRCRAFT_STANDS, TIMES)]) 
 
-        # Cтоимость руления по аэродрому
-        self.model.airport_taxiing_cost = pyo.Expression(FLIGHTS, rule=self.airport_taxiing_cost_func)
+        # Стоимость использования перронных автобусов для посадки/высадки пассажиров
+        self.model.busses_cost = pyo.Expression(FLIGHTS, rule=self.busses_cost_func)
         
         # MC_VC:
         #     Стоимость
