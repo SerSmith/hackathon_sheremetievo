@@ -82,10 +82,10 @@ class OptimizeDay:
             current_dt = current_dt + timedelta(minutes = 5)
         return result_5minutes_list
 
-        # Cтоимость руления по аэродрому
-        def airport_taxiing_cost_func(self, flight):
-            # Стоимость руления определяется как время руления (однозначно определяется МС ВС) умноженное на тариф за минуту руления
-        return sum([self.model.AS_occupied[flight, stand, time] * AIRCRAFT_STANDS_DATA['Taxiing_Time'][stand] * HANDLING_RATES['Aircraft_Taxiing_Cost_per_Minute'] for stand, time in product(AIRCRAFT_STANDS, TIMES)]) 
+    # Cтоимость руления по аэродрому
+    def airport_taxiing_cost_func(self, flight):
+        # Стоимость руления определяется как время руления (однозначно определяется МС ВС) умноженное на тариф за минуту руления
+    return sum([self.model.AS_occupied[flight, stand, time] * AIRCRAFT_STANDS_DATA['Taxiing_Time'][stand] * HANDLING_RATES['Aircraft_Taxiing_Cost_per_Minute'] for stand, time in product(AIRCRAFT_STANDS, TIMES)]) 
 
 
 
