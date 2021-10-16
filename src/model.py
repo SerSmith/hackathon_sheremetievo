@@ -9,6 +9,8 @@ class Data():
         self.aircraft_classes_dict = None
         self.handling_rates_dict = None
         self.handling_time_dict = None
+        self.aircraft_stands_dict = None
+        self.flights_dict = None
     
     def get_aircraft_classes(self):
         if self.aircraft_classes_dict is None:
@@ -33,7 +35,20 @@ class Data():
         	                                                    'Away_Handling_Time': 'Away'})
             self.handling_time_dict = handling_time_pd.set_index('Aircraft_Class').to_dict()
         return self.handling_time_dict
-    
+    def get_aircraft_stands(self):
+        if self.aircraft_stands_dict is None:
+            aircraft_stands_folder = os.path.join(self.data_folder, 'Aircraft_Stands_Public.csv')
+            aircraft_stands_pd = pd.read_csv(aircraft_stands_folder)
+            self.aircraft_stands_dict  = aircraft_stands_pd.set_index('Aircraft_Stand').to_dict()
+        return self.aircraft_stands_dict
+    def get_flights(self):
+        if self.flights_dict is None:
+            flights_folder = os.path.join(self.data_folder, 'Timetable_Public.csv')
+            flights_pd = pd.read_csv(flights_folder)
+            flights_pd.drop(['Aircraft_Stand'], axis=1, inplace=True)
+            self.flights_dict  = flights_pd.set_index('flight_number').to_dict()
+            print(self.flights_dict)
+        return self.flights_dict 
 
 
 
@@ -82,7 +97,7 @@ class OptimizeDay:
 if __name__ == "__main__":
     d = Data()
 
-    d.get_handling_time()
+    d.get_flights()
 
 
 
