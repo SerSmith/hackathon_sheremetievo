@@ -2,7 +2,7 @@ import pyomo.environ as pyo
 from pyomo.opt import SolverFactory
 import pandas as pd
 import os 
-
+from datetime import datetime, timedelta
 
 class Data():
     def __init__(self, data_folder: str='../data'):
@@ -48,7 +48,6 @@ class Data():
             flights_pd = pd.read_csv(flights_folder)
             flights_pd.drop(['Aircraft_Stand'], axis=1, inplace=True)
             self.flights_dict  = flights_pd.set_index('flight_number').to_dict()
-            print(self.flights_dict)
         return self.flights_dict 
 
 
@@ -70,8 +69,16 @@ class OptimizeDay:
         self.data = data
         pass
     
-    def get_times(self):
-        return 
+    @statictmethod
+    def __get_times(start_dt, end_dt)):
+        result_5minutes_list = []
+        current_dt = start_dt
+        while current_dt<end_dt:
+            result_5minutes_list.append(current_dt)
+            current_dt = current_dt + timedelta(minutes = 5)
+        return result_5minutes_list
+
+
 
     def make_model(self):
 
