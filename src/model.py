@@ -132,10 +132,10 @@ class OptimizeDay:
                     (1 - self.teletrap_can_be_used(flight, stand))
                     for stand in AIRCRAFT_STANDS])
         
-    def time_calculate_func(flight, aircraft_stand, time):
-            flight_time = self.flights_dict['flight_datetime'][flight]
-            taxiing_time = self.aircraft_stands_dict['Taxiing_Time'][aircraft_stand]
-            arrival_or_depature = self.flights_dict['flight_AD'][flight]
+    def time_calculate_func(self, model, flight, aircraft_stand, time):
+            flight_time = self.FLIGHTS_DATA['flight_datetime'][flight]
+            taxiing_time = self.AIRCRAFT_STANDS_DATA['Taxiing_Time'][aircraft_stand]
+            arrival_or_depature = self.FLIGHTS_DATA['flight_AD'][flight]
             #dict_arrival_flg = {'D': -1, 'A': 1}
             #arrival_flg = arrival_or_depature.map(dict_arrival_flg)
             use_trap_flg = self.get_use_trap(flight, aircraft_stand)
@@ -165,12 +165,10 @@ class OptimizeDay:
     def make_model(self, start_dt=datetime(2019, 5, 17, 0, 0), end_dt=datetime(2019, 5, 17, 23, 55)):
     
 
-
-
         # Рейсы
-        FLIGHTS = FLIGHTS_DATA.keys()
+        FLIGHTS = self.FLIGHTS_DATA.keys()
         # Места стоянки
-        AIRCRAFT_STANDS = AIRCRAFT_STANDS.keys()
+        AIRCRAFT_STANDS = self.AIRCRAFT_STANDS_DATA.keys()
         # Временные отрезки
         TIMES = self.__get_times(start_dt=start_dt, end_dt=end_dt)
 
