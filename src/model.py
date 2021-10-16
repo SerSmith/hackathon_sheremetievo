@@ -8,6 +8,7 @@ class Data():
         self.data_folder = data_folder
         self.aircraft_classes_dict = None
         self.handling_rates_dict = None
+        self.handling_time_dict = None
     
     def get_aircraft_classes(self):
         if self.aircraft_classes_dict is None:
@@ -23,6 +24,16 @@ class Data():
             handling_rates_pd = pd.read_csv(handling_rates_folder)
             self.handling_rates_dict = handling_rates_pd.set_index('Name').to_dict()
         return self.handling_rates_dict
+
+    def get_handling_time(self):
+        if self.handling_time_dict is None:
+            handling_time_folder = os.path.join(self.data_folder, 'Handling_Time_Public.csv')
+            handling_time_pd = pd.read_csv(handling_time_folder)
+            handling_time_pd = handling_time_pd.rename(columns={'JetBridge_Handling_Time': 'JetBridge',
+        	                                                    'Away_Handling_Time': 'Away'})
+            self.handling_time_dict = handling_time_pd.set_index('Aircraft_Class').to_dict()
+        return self.handling_time_dict
+    
 
 
 
@@ -42,35 +53,38 @@ class OptimizeDay:
         pass
 
     def make_model(self):
+        # MC_VC:
+        #     Стоимость
+        #     Наличие трапа
+        #     Возможность использования трапа
+        #     время движения от терминала (1, 2, 3, 4, 5)
+
+
+
+        # сущности:
+
+        # рейс (количество рейсов)
+        # МС (количество МС)
+        # 5минутка (720)
+        # занимаемые места (Рейс * МС * 5минутки) - переменные
+
+        # стоимость руления по аэродрому (количество рейсов)
+        # смтоимость использования МС ВС
+        # Стоимость использования перронных автобусов для посадки/высадки пассажиров
+
+
         pass
 
+    def get_pyomo_obj(self):
+        pass
 
 
 if __name__ == "__main__":
     d = Data()
 
-    d.get_handling_rates()
+    d.get_handling_time()
 
 
 
-
-MC_VC:
-    Стоимость
-    Наличие трапа
-    Возможность использования трапа
-    время движения от терминала (1, 2, 3, 4, 5)
-
-
-
-сущности:
-
-рейс (количество рейсов)
-МС (количество МС)
-5минутка (720)
-занимаемые места (Рейс * МС * 5минутки) - переменные
-
-стоимость руления по аэродрому (количество рейсов)
-смтоимость использования МС ВС
-Стоимость использования перронных автобусов для посадки/высадки пассажиров
 
 
