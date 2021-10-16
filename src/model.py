@@ -84,7 +84,9 @@ class OptimizeDay:
     def __init__(self, data: Data):
         self.model = None
         self.data = data
-        self.bus_capacity = bus_capacity
+        self.FLIGHTS_DATA = data.get_flights()
+        self.AIRCRAFT_STANDS_DATA = data.get_aircraft_stands()
+        self.HANDLING_RATES = data.get_handling_rates()
 
     
     @staticmethod
@@ -101,8 +103,8 @@ class OptimizeDay:
         # Стоимость руления определяется как время руления (однозначно определяется МС ВС) умноженное на тариф за минуту руления
         # TODO учесть, что некорректно может считаться из-замножественного time
         return sum([self.model.AS_occupied[flight, stand] *
-                    AIRCRAFT_STANDS_DATA['Taxiing_Time'][stand] *
-                    HANDLING_RATES['Aircraft_Taxiing_Cost_per_Minute']
+                    self.AIRCRAFT_STANDS_DATA['Taxiing_Time'][stand] *
+                    self.HANDLING_RATES['Aircraft_Taxiing_Cost_per_Minute']
                     for stand in AIRCRAFT_STANDS])
     
 
@@ -133,43 +135,44 @@ class OptimizeDay:
     def busses_cost_func(self, flight):
         # При использовании удалённых МС ВС для посадки/высадки пассажиров необходимо использовать перронные автобусы. Вместимость одного перронного автобуса 80 пассажиров. Время движения автобуса от терминала и стоимость минуты использования автобуса указаны в соответствующих таблицах.
         return sum([self.model.AS_occupied[flight, stand] *
-                    FLIGHTS_DATA['quantity_busses'][flight] *
-                    AIRCRAFT_STANDS_DATA[FLIGHTS_DATA['flight_terminal_#'][flight]][stand] *
+                    self.FLIGHTS_DATA['quantity_busses'][flight] *
+                    self.AIRCRAFT_STANDS_DATA[self.FLIGHTS_DATA['flight_terminal_#'][flight]][stand] *
                     (1 - self.teletrap_can_be_used(flight, stand))
                     for stand in AIRCRAFT_STANDS])
         
     def time_calculate_func(flight, aircraft_stand, time):
             flight_time = self.flights_dict['flight_datetime'][flight]
-        taxiing_time = self.aircraft_stands_dict['Taxiing_Time'][aircraft_stand]
-        arrival_or_depature = self.flights_dict['flight_AD'][flight]
-        #dict_arrival_flg = {'D': -1, 'A': 1}
-        #arrival_flg = arrival_or_depature.map(dict_arrival_flg)
-        use_trap_flg = self.get_use_trap(flight, aircraft_stand)
-        if use_trap_flg:
-            column_handling_time = 'JetBridge'
-        else: 
-            column_handling_time = 'Away'
-        aircraft_class = self.get_airctaft_class(flight)
-        handling_time = self.get_handling_time()[column_handling_time][aircraft_class]
-        if arrival_or_depature == 'D':
-            if (flight_time - timedelta(minutes=taxiing_time) > time) & \
-                (flight_time - timedelta(minutes=handling_time) - timedelta(minutes=taxiing_time) < time):
-                    return 1
+            taxiing_time = self.aircraft_stands_dict['Taxiing_Time'][aircraft_stand]
+            arrival_or_depature = self.flights_dict['flight_AD'][flight]
+            #dict_arrival_flg = {'D': -1, 'A': 1}
+            #arrival_flg = arrival_or_depature.map(dict_arrival_flg)
+            use_trap_flg = self.get_use_trap(flight, aircraft_stand)
+            if use_trap_flg:
+                column_handling_time = 'JetBridge'
+            else: 
+                column_handling_time = 'Away'
+            aircraft_class = self.get_airctaft_class(flight)
+            handling_time = self.get_handling_time()[column_handling_time][aircraft_class]
+            if arrival_or_depature == 'D':
+                if (flight_time - timedelta(minutes=taxiing_time) > time) & \
+                    (flight_time - timedelta(minutes=handling_time) - timedelta(minutes=taxiing_time) < time):
+                        return 1
+                else:
+                    return 0
             else:
-                return 0
-        else:
-            if (flight_time + timedelta(minutes=taxiing_time) < time) & \
-                (flight_time + timedelta(minutes=handling_time) + timedelta(minutes=taxiing_time) > time):
-                    return 1
-            else:
-                return 0
+                if (flight_time + timedelta(minutes=taxiing_time) < time) & \
+                    (flight_time + timedelta(minutes=handling_time) + timedelta(minutes=taxiing_time) > time):
+                        return 1
+                else:
+                    return 0
+    
+    def AS_using_cost_def(self, stand):
+        return 0
 
 
     def make_model(self, start_dt=datetime(2019, 5, 17, 0, 0), end_dt=datetime(2019, 5, 17, 23, 55)):
     
-        FLIGHTS_DATA = self.__get_flights_extended()
-        AIRCRAFT_STANDS_DATA = self.data.get_aircraft_stands()
-        HANDLING_RATES = self.data.get_handling_rates()
+
 
 
         # Рейсы
@@ -192,29 +195,26 @@ class OptimizeDay:
         self.model.airport_taxiing_cost = pyo.Expression(FLIGHTS, rule=self.airport_taxiing_cost_func)
 
         # Стоимость использования МС ВС
-        self.model.airport_taxiing_cost = pyo.Expression(FLIGHTS, rule=self.airport_taxiing_cost_func)
+        self.model.AS_using_cost = pyo.Expression(AIRCRAFT_STANDS, rule=self.AS_using_cost_def)
 
         # Стоимость использования перронных автобусов для посадки/высадки пассажиров
         self.model.busses_cost = pyo.Expression(FLIGHTS, rule=self.busses_cost_func)
 
+        # Целевая переменная
+        self.model.OBJ = pyo.Objective(expr=sum([self.model.airport_taxiing_cost[flight] for flight in FLIGHTS]) +\
+                                            sum([self.model.AS_using_cost[stand] for stand in AIRCRAFT_STANDS]) +\
+                                            sum([self.model.busses_cost[flight] for flight in FLIGHTS]), sense=pyo.minimize)
 
+        self.opt_output = self.opt.solve(self.model, logfile='SOLVE_LOG', solnfile='SOLNFILE')
 
-
-        pass
 
     def get_pyomo_obj(self):
-        pass
-
+        return self.model
 
 if __name__ == "__main__":
     d = DataExtended()
-    # opt = OptimizeDay(d)
-    # opt.make_model()
-
-    t = d.get_flights()
-
-    print(t.keys())
-
+    opt = OptimizeDay(d)
+    opt.make_model()
 
 
 # Все места стоянок делятся на контактные (посадка/высадка через телетрап) и удалённые (посадка/высадка 
