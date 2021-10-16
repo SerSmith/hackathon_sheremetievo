@@ -72,7 +72,7 @@ class OptimizeDay:
         pass
     
     @statictmethod
-    def __get_times(start_dt, end_dt)):
+    def __get_times(start_dt, end_dt):
         result_5minutes_list = []
         current_dt = start_dt
         while current_dt<end_dt:
@@ -82,17 +82,18 @@ class OptimizeDay:
 
 
 
-    def make_model(self):
+    def make_model(self, start_dt, end_dt):
 
         FLIGHTS_DATA = self.data.get_flights()
         AIRCRAFT_STANDS_DATA = self.data.get_aircraft_stands()
+
 
         # Рейсы
         FLIGHTS = FLIGHTS_DATA.keys()
         # Места стоянки
         AIRCRAFT_STANDS = AIRCRAFT_STANDS.keys()
         # Временные отрезки
-        TIMES = self.get_times()
+        TIMES = self.__get_times(start_dt, end_dt)
 
 
         self.model = pyo.ConcreteModel()
@@ -107,7 +108,7 @@ class OptimizeDay:
         def airport_taxiing_cost_func(flight):
             # Стоимость руления определяется как время руления (однозначно определяется МС ВС) умноженное на тариф за минуту руления
         
-        return sum([model.AS_occupied[flight, stand, time] *  for stand, time in product(AIRCRAFT_STANDS, TIMES)]) 
+        return sum([model.AS_occupied[flight, stand, time] * AIRCRAFT_STANDS_DATA['Taxiing_Time'][stand] *  for stand, time in product(AIRCRAFT_STANDS, TIMES)]) 
 
 
 
