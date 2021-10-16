@@ -51,7 +51,7 @@ class Data():
             flights_folder = os.path.join(self.data_folder, 'Timetable_Public.csv')
             flights_pd = pd.read_csv(flights_folder)
             flights_pd.drop(['Aircraft_Stand'], axis=1, inplace=True)
-            self.flights_dict  = flights_pd.set_index('flight_number').to_dict()
+            self.flights_dict  = flights_pd.to_dict()
         return self.flights_dict 
 
 
@@ -93,7 +93,7 @@ class OptimizeDay:
 
 
 
-    def make_model(self, start_dt=datetime.datetime(2019, 5, 17, 0, 0), end_dt=datetime.datetime(2019, 5, 17, 23, 55)):
+    def make_model(self, start_dt=datetime(2019, 5, 17, 0, 0), end_dt=datetime(2019, 5, 17, 23, 55)):
     
         FLIGHTS_DATA = self.data.get_flights()
         AIRCRAFT_STANDS_DATA = self.data.get_aircraft_stands()
@@ -114,7 +114,30 @@ class OptimizeDay:
         self.model.AS_occupied = pyo.Var(FLIGHTS, AIRCRAFT_STANDS, within=pyo.Binary, initialize=0)
 
         def time_calculate_func(flight, aircraft_stand, time):
-            pass
+            flight_time = self.flights_dict['flight_datetime'][flight]
+            taxiing_time = self.aircraft_stands_dict['Taxiing_Time'][aircraft_stand]
+            arrival_or_depature = self.flights_dict['flight_AD'][flight]
+            #dict_arrival_flg = {'D': -1, 'A': 1}
+            #arrival_flg = arrival_or_depature.map(dict_arrival_flg)
+            use_trap_flg = self.get_use_trap(flight, aircraft_stand)
+            if use_trap_flg:
+                column_handling_time = 'JetBridge'
+            else: 
+                column_handling_time = 'Away'
+            aircraft_class = self.get_airctaft_class(flight)
+            handling_time = self.get_handling_time()[column_handling_time][aircraft_class]
+            if arrival_or_depature == 'D':
+                if (flight_time - timedelta(minutes=taxiing_time) > time) & \
+                    (flight_time - timedelta(minutes=handling_time) - timedelta(minutes=taxiing_time) < time):
+                        return 1
+                else:
+                    return 0
+            else:
+                if (flight_time + timedelta(minutes=taxiing_time) < time) & \
+                    (flight_time + timedelta(minutes=handling_time) + timedelta(minutes=taxiing_time) > time):
+                        return 1
+                else:
+                    return 0
 
         # занимаемые времена с учетом времени
         self.model.AS_time_occupied = pyo.Expression(FLIGHTS, AIRCRAFT_STANDS, TIMES, rule=self.time_calculate_func)
