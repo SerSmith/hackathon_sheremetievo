@@ -140,31 +140,32 @@ class OptimizeDay:
                     (1 - self.teletrap_can_be_used(flight, stand))
                     for stand in AIRCRAFT_STANDS])
         
-    def time_calculate_func(flight, aircraft_stand, time):
-            flight_time = self.flights_dict['flight_datetime'][flight]
-            taxiing_time = self.aircraft_stands_dict['Taxiing_Time'][aircraft_stand]
-            arrival_or_depature = self.flights_dict['flight_AD'][flight]
-            #dict_arrival_flg = {'D': -1, 'A': 1}
-            #arrival_flg = arrival_or_depature.map(dict_arrival_flg)
-            use_trap_flg = self.get_use_trap(flight, aircraft_stand)
-            if use_trap_flg:
-                column_handling_time = 'JetBridge'
-            else: 
-                column_handling_time = 'Away'
-            aircraft_class = self.get_airctaft_class(flight)
-            handling_time = self.get_handling_time()[column_handling_time][aircraft_class]
-            if arrival_or_depature == 'D':
-                if (flight_time - timedelta(minutes=taxiing_time) > time) & \
-                    (flight_time - timedelta(minutes=handling_time) - timedelta(minutes=taxiing_time) < time):
-                        return 1
-                else:
-                    return 0
+    def time_calculate_func(self, flight, aircraft_stand, time):
+        flight_time = self.flights_dict['flight_datetime'][flight]
+        taxiing_time = self.aircraft_stands_dict['Taxiing_Time'][aircraft_stand]
+        arrival_or_depature = self.flights_dict['flight_AD'][flight]
+        #dict_arrival_flg = {'D': -1, 'A': 1}
+        #arrival_flg = arrival_or_depature.map(dict_arrival_flg)
+        use_trap_flg = self.get_use_trap(flight, aircraft_stand)
+        if use_trap_flg:
+            column_handling_time = 'JetBridge'
+        else: 
+            column_handling_time = 'Away'
+        aircraft_class = self.get_airctaft_class(flight)
+        handling_time = self.get_handling_time()[column_handling_time][aircraft_class]
+        if arrival_or_depature == 'D':
+            if (flight_time - timedelta(minutes=taxiing_time) > time) & \
+                (flight_time - timedelta(minutes=handling_time) - timedelta(minutes=taxiing_time) < time):
+                    result = 1
             else:
-                if (flight_time + timedelta(minutes=taxiing_time) < time) & \
-                    (flight_time + timedelta(minutes=handling_time) + timedelta(minutes=taxiing_time) > time):
-                        return 1
-                else:
-                    return 0
+                result = 0
+        else:
+            if (flight_time + timedelta(minutes=taxiing_time) < time) & \
+                (flight_time + timedelta(minutes=handling_time) + timedelta(minutes=taxiing_time) > time):
+                    result = 1
+            else:
+                result = 0
+        return result
     
     def AS_using_cost_def(self, stand):
         return 0
