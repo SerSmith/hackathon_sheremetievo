@@ -89,7 +89,7 @@ class OptimizeDay:
 
 
 
-    def make_model(self, start_dt, end_dt):
+    def make_model(self, start_dt = datetime.datetime(2019, 5, 17, 0, 0), end_dt = datetime.datetime(2019, 5, 17, 23, 55)):
 
         FLIGHTS_DATA = self.data.get_flights()
         AIRCRAFT_STANDS_DATA = self.data.get_aircraft_stands()
@@ -101,7 +101,7 @@ class OptimizeDay:
         # Места стоянки
         AIRCRAFT_STANDS = AIRCRAFT_STANDS.keys()
         # Временные отрезки
-        TIMES = self.__get_times(start_dt, end_dt)
+        TIMES = self.__get_times(start_dt = start_dt, end_dt = end_dt)
 
 
         self.model = pyo.ConcreteModel()
