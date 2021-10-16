@@ -1,7 +1,8 @@
-# import pyomo.environ as pyo
-# from pyomo.opt import SolverFactory
+import pyomo.environ as pyo
+from pyomo.opt import SolverFactory
 import pandas as pd
 import os 
+
 
 class Data():
     def __init__(self, data_folder: str='../data'):
@@ -33,8 +34,6 @@ class Data():
         	                                                    'Away_Handling_Time': 'Away'})
             self.handling_time_dict = handling_time_pd.set_index('Aircraft_Class').to_dict()
         return self.handling_time_dict
-    
-
 
 
 
@@ -49,10 +48,31 @@ class OptimizationSolution():
         pass   
 
 class OptimizeDay:
-    def __init__(self):
+    def __init__(self, data: Data):
+        self.model = None
+        self.data = data
         pass
+    
+    def get_times(self):
+        return 
 
     def make_model(self):
+
+        FLIGHTS_DATA = self.data.get_flights()
+        AIRCRAFT_STANDS_DATA = self.data.get_aircraft_stands()
+
+        # Рейсы
+        FLIGHTS = FLIGHTS_DATA.keys()
+        # Места стоянки
+        AIRCRAFT_STANDS = AIRCRAFT_STANDS.keys()
+        # Временные отрезки
+        TIMES = self.get_times()
+
+
+        self.model = pyo.ConcreteModel()
+    
+        # занимаемые места (Рейс * МС * 5минутки) - переменные
+        self.model.stops = pyo.Var(FLIGHTS, visuals, within=pyo.Binary, initialize=0)
         # MC_VC:
         #     Стоимость
         #     Наличие трапа
@@ -63,14 +83,13 @@ class OptimizeDay:
 
         # сущности:
 
-        # рейс (количество рейсов)
         # МС (количество МС)
         # 5минутка (720)
-        # занимаемые места (Рейс * МС * 5минутки) - переменные
+
 
         # стоимость руления по аэродрому (количество рейсов)
         # смтоимость использования МС ВС
-        # Стоимость использования перронных автобусов для посадки/высадки пассажиров
+        # Стоимость использования перронных автобусов для посадки/высадки пассажировa
 
 
         pass
@@ -81,9 +100,8 @@ class OptimizeDay:
 
 if __name__ == "__main__":
     d = Data()
-
-    d.get_handling_time()
-
+    opt = OptimizeDay(d)
+    opt.make_model()
 
 
 
