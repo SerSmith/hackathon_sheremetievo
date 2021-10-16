@@ -123,6 +123,14 @@ class OptimizeDay:
                 (self.FLIGHTS_DATA['flight_AD'][flight] == 'D'))
 
         return cond1 and cond2
+    
+    def find_aircraft_class(self, flight):
+        """ Находим тип ВС ('Regional', 'Narrow_Body', 'Wide_Body') """
+        capacity_of_flight = self.get_flights['flight_AC_PAX_capacity_total'][flight]
+        # Если будут другие данные, то надо добавить сортировку!
+        for (aircraft_class, number_seats) in self.get_aircraft_classes['Max_Seats'].items():
+            if capacity_of_flight <= number_seats:
+                return aircraft_class
 
     def busses_cost_func(self, flight):
         # При использовании удалённых МС ВС для посадки/высадки пассажиров необходимо использовать перронные автобусы. Вместимость одного перронного автобуса 80 пассажиров. Время движения автобуса от терминала и стоимость минуты использования автобуса указаны в соответствующих таблицах.
@@ -133,30 +141,37 @@ class OptimizeDay:
                     for stand in AIRCRAFT_STANDS])
         
     def time_calculate_func(self, model, flight, aircraft_stand, time):
-            flight_time = self.FLIGHTS_DATA['flight_datetime'][flight]
-            taxiing_time = self.AIRCRAFT_STANDS_DATA['Taxiing_Time'][aircraft_stand]
-            arrival_or_depature = self.FLIGHTS_DATA['flight_AD'][flight]
-            #dict_arrival_flg = {'D': -1, 'A': 1}
-            #arrival_flg = arrival_or_depature.map(dict_arrival_flg)
-            use_trap_flg = self.get_use_trap(flight, aircraft_stand)
-            if use_trap_flg:
-                column_handling_time = 'JetBridge'
-            else: 
-                column_handling_time = 'Away'
-            aircraft_class = self.get_airctaft_class(flight)
-            handling_time = self.get_handling_time()[column_handling_time][aircraft_class]
-            if arrival_or_depature == 'D':
-                if (flight_time - timedelta(minutes=taxiing_time) > time) & \
-                    (flight_time - timedelta(minutes=handling_time) - timedelta(minutes=taxiing_time) < time):
-                        return 1
-                else:
-                    return 0
+        a = 1
+        flight_time = self.FLIGHTS_DATA['flight_datetime'][flight]
+        taxiing_time = self.AIRCRAFT_STANDS_DATA['Taxiing_Time'][aircraft_stand]
+        arrival_or_depature = self.FLIGHTS_DATA['flight_AD'][flight]
+        use_trap_flg = self.teletrap_can_be_used(flight, aircraft_stand)
+
+
+        if use_trap_flg:
+            column_handling_time = 'JetBridge'
+        else: 
+            column_handling_time = 'Away'
+        aircraft_class = self.get_airctaft_class(flight)
+        handling_time = self.get_handling_time()[column_handling_time][aircraft_class]
+
+
+        if arrival_or_depature == 'D':
+            if (flight_time - timedelta(minutes=taxiing_time) > time) & \
+                (flight_time - timedelta(minutes=handling_time) - timedelta(minutes=taxiing_time) < time):
+                    result = 1
             else:
-                if (flight_time + timedelta(minutes=taxiing_time) < time) & \
-                    (flight_time + timedelta(minutes=handling_time) + timedelta(minutes=taxiing_time) > time):
-                        return 1
-                else:
-                    return 0
+                result = 0
+        elif arrival_or_depature == 'A':
+            if (flight_time + timedelta(minutes=taxiing_time) < time) & \
+                (flight_time + timedelta(minutes=handling_time) + timedelta(minutes=taxiing_time) > time):
+                    result = 1
+            else:
+                result = 0
+        else:
+            raise ValueError(f"arrival_or_depature имеет некорректное значение: {arrival_or_depature} , а должно быть A или D")
+
+        return result
     
     def AS_using_cost_def(self, stand):
         return 0
