@@ -2,7 +2,7 @@ import pyomo.environ as pyo
 from pyomo.opt import SolverFactory
 import pandas as pd
 import os 
-
+from  itertools import product
 
 class Data():
     def __init__(self, data_folder: str='../data'):
@@ -72,7 +72,22 @@ class OptimizeDay:
         self.model = pyo.ConcreteModel()
     
         # занимаемые места (Рейс * МС * 5минутки) - переменные
-        self.model.stops = pyo.Var(FLIGHTS, visuals, within=pyo.Binary, initialize=0)
+        self.model.AS_occupied = pyo.Var(FLIGHTS, AIRCRAFT_STANDS, TIMES, within=pyo.Binary, initialize=0)
+
+
+        # Cтоимость руления по аэродрому
+
+
+        def airport_taxiing_cost_func(flight):
+            # Стоимость руления определяется как время руления (однозначно определяется МС ВС) умноженное на тариф за минуту руления
+        
+        return sum([model.AS_occupied[flight, stand, time] *  for stand, time in product(AIRCRAFT_STANDS, TIMES)]) 
+
+
+
+        self.model.airport_taxiing_cost = pyo.Expression(FLIGHTS, rule=airport_taxiing_cost_func)
+
+        
         # MC_VC:
         #     Стоимость
         #     Наличие трапа
@@ -83,11 +98,8 @@ class OptimizeDay:
 
         # сущности:
 
-        # МС (количество МС)
-        # 5минутка (720)
 
 
-        # стоимость руления по аэродрому (количество рейсов)
         # смтоимость использования МС ВС
         # Стоимость использования перронных автобусов для посадки/высадки пассажировa
 
