@@ -121,6 +121,14 @@ class OptimizeDay:
                 (self.FLIGHTS_DATA['flight_AD'][flight] == 'D'))
 
         return cond1 and cond2
+    
+    def find_aircraft_class(self, flight):
+        """ Находим тип ВС ('Regional', 'Narrow_Body', 'Wide_Body') """
+        capacity_of_flight = self.get_flights['flight_AC_PAX_capacity_total'][flight]
+        # Если будут другие данные, то надо добавить сортировку!
+        for (aircraft_class, number_seats) in self.get_aircraft_classes['Max_Seats'].items():
+            if capacity_of_flight <= number_seats:
+                return aircraft_class
 
 
     def make_model(self, start_dt=datetime(2019, 5, 17, 0, 0), end_dt=datetime(2019, 5, 17, 23, 55)):
@@ -149,7 +157,7 @@ class OptimizeDay:
             arrival_or_depature = self.flights_dict['flight_AD'][flight]
             #dict_arrival_flg = {'D': -1, 'A': 1}
             #arrival_flg = arrival_or_depature.map(dict_arrival_flg)
-            use_trap_flg = self.get_use_trap(flight, aircraft_stand)
+            use_trap_flg = self.teletrap_can_be_used(flight, aircraft_stand)
             if use_trap_flg:
                 column_handling_time = 'JetBridge'
             else: 
