@@ -122,6 +122,40 @@ class OptimizeDay:
 
         return cond1 and cond2
 
+    def busses_cost_func(self, flight):
+        # При использовании удалённых МС ВС для посадки/высадки пассажиров необходимо использовать перронные автобусы. Вместимость одного перронного автобуса 80 пассажиров. Время движения автобуса от терминала и стоимость минуты использования автобуса указаны в соответствующих таблицах.
+        return sum([self.model.AS_occupied[flight, stand] *
+                    FLIGHTS_DATA['quantity_busses'][flight] *
+                    AIRCRAFT_STANDS_DATA[FLIGHTS_DATA['flight_terminal_#'][flight]][stand] *
+                    (1 - self.teletrap_can_be_used(flight, stand))
+                    for stand in AIRCRAFT_STANDS])
+        
+    def time_calculate_func(flight, aircraft_stand, time):
+            flight_time = self.flights_dict['flight_datetime'][flight]
+        taxiing_time = self.aircraft_stands_dict['Taxiing_Time'][aircraft_stand]
+        arrival_or_depature = self.flights_dict['flight_AD'][flight]
+        #dict_arrival_flg = {'D': -1, 'A': 1}
+        #arrival_flg = arrival_or_depature.map(dict_arrival_flg)
+        use_trap_flg = self.get_use_trap(flight, aircraft_stand)
+        if use_trap_flg:
+            column_handling_time = 'JetBridge'
+        else: 
+            column_handling_time = 'Away'
+        aircraft_class = self.get_airctaft_class(flight)
+        handling_time = self.get_handling_time()[column_handling_time][aircraft_class]
+        if arrival_or_depature == 'D':
+            if (flight_time - timedelta(minutes=taxiing_time) > time) & \
+                (flight_time - timedelta(minutes=handling_time) - timedelta(minutes=taxiing_time) < time):
+                    return 1
+            else:
+                return 0
+        else:
+            if (flight_time + timedelta(minutes=taxiing_time) < time) & \
+                (flight_time + timedelta(minutes=handling_time) + timedelta(minutes=taxiing_time) > time):
+                    return 1
+            else:
+                return 0
+
 
     def make_model(self, start_dt=datetime(2019, 5, 17, 0, 0), end_dt=datetime(2019, 5, 17, 23, 55)):
     
@@ -143,65 +177,19 @@ class OptimizeDay:
         # занимаемые места (Рейс * МC) - переменные
         self.model.AS_occupied = pyo.Var(FLIGHTS, AIRCRAFT_STANDS, within=pyo.Binary, initialize=0)
 
-        def time_calculate_func(flight, aircraft_stand, time):
-            flight_time = self.flights_dict['flight_datetime'][flight]
-            taxiing_time = self.aircraft_stands_dict['Taxiing_Time'][aircraft_stand]
-            arrival_or_depature = self.flights_dict['flight_AD'][flight]
-            #dict_arrival_flg = {'D': -1, 'A': 1}
-            #arrival_flg = arrival_or_depature.map(dict_arrival_flg)
-            use_trap_flg = self.get_use_trap(flight, aircraft_stand)
-            if use_trap_flg:
-                column_handling_time = 'JetBridge'
-            else: 
-                column_handling_time = 'Away'
-            aircraft_class = self.get_airctaft_class(flight)
-            handling_time = self.get_handling_time()[column_handling_time][aircraft_class]
-            if arrival_or_depature == 'D':
-                if (flight_time - timedelta(minutes=taxiing_time) > time) & \
-                    (flight_time - timedelta(minutes=handling_time) - timedelta(minutes=taxiing_time) < time):
-                        return 1
-                else:
-                    return 0
-            else:
-                if (flight_time + timedelta(minutes=taxiing_time) < time) & \
-                    (flight_time + timedelta(minutes=handling_time) + timedelta(minutes=taxiing_time) > time):
-                        return 1
-                else:
-                    return 0
-
         # занимаемые времена с учетом времени
         self.model.AS_time_occupied = pyo.Expression(FLIGHTS, AIRCRAFT_STANDS, TIMES, rule=self.time_calculate_func)
 
         # Cтоимость руления по аэродрому
         self.model.airport_taxiing_cost = pyo.Expression(FLIGHTS, rule=self.airport_taxiing_cost_func)
 
-
-        def busses_cost_func(self, flight):
-            # При использовании удалённых МС ВС для посадки/высадки пассажиров необходимо использовать перронные автобусы. Вместимость одного перронного автобуса 80 пассажиров. Время движения автобуса от терминала и стоимость минуты использования автобуса указаны в соответствующих таблицах.
-            return sum([self.model.AS_occupied[flight, stand] *
-                        FLIGHTS_DATA['quantity_busses'][flight] *
-                        AIRCRAFT_STANDS_DATA[FLIGHTS_DATA['flight_terminal_#'][flight]][stand] *
-                        (1 - self.teletrap_can_be_used(flight, stand))
-                        for stand in AIRCRAFT_STANDS]) 
-
+        # Стоимость использования МС ВС
+        self.model.airport_taxiing_cost = pyo.Expression(FLIGHTS, rule=self.airport_taxiing_cost_func)
 
         # Стоимость использования перронных автобусов для посадки/высадки пассажиров
         self.model.busses_cost = pyo.Expression(FLIGHTS, rule=self.busses_cost_func)
-        
-        # MC_VC:
-        #     Стоимость
-        #     Наличие трапа
-        #     Возможность использования трапа
-        #     время движения от терминала (1, 2, 3, 4, 5)
 
 
-
-        # сущности:
-
-
-
-        # смтоимость использования МС ВС
-        # Стоимость использования перронных автобусов для посадки/высадки пассажировa
 
 
         pass
