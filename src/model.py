@@ -106,6 +106,21 @@ class OptimizeDay:
                     for stand in AIRCRAFT_STANDS])
     
 
+    def teletrap_can_be_used(self, flight, stand):
+        """ Телетрап на данном МС доступен только в случае, если:
+        1)терминал рейса соответствует терминалу МC
+        2)значение поля flight_ID рейса (метка МВЛ/ВВЛ – Domestic/Intern£tion£l) совпадает с соответствующей меткой поля JetBridge_on_Arriv£l (для прилетающих рейсов) или JetBridge_on_Dep£rture (для вылетающих рейсов) МС
+        """
+        # TODO что делать если терминал пропущен
+        # TODO проверить На МС с телетрапами существует дополнительное ограничение по расстановке ВС: на соседних МС (т.е. тех МС, у которых номер отличается на 1) не могут находиться одновременно два широкофюзеляжных ВС (ВС класса “Wide_Body”)
+        cond1 = self.FLIGHTS_DATA['flight_terminal_#'][flight] == self.AIRCRAFT_STANDS_DATA['Terminal'][stand]
+        cond2 = ((self.FLIGHTS_DATA['flight_ID'][flight] == self.AIRCRAFT_STANDS_DATA['JetBridge_on_Arrival'][stand])\
+                 and (self.FLIGHTS_DATA['flight_AD'][flight] == 'A'))\
+                 or\
+                ((self.FLIGHTS_DATA['flight_ID'][flight] == self.AIRCRAFT_STANDS_DATA['JetBridge_on_Departure'][stand]) and\
+                (self.FLIGHTS_DATA['flight_AD'][flight] == 'D'))
+
+        return cond1 and cond2
 
 
 
@@ -144,7 +159,7 @@ class OptimizeDay:
             return sum([self.model.AS_occupied[flight, stand] *
                         FLIGHTS_DATA['quantity_busses'][flight] *
                         AIRCRAFT_STANDS_DATA[FLIGHTS_DATA['flight_terminal_#'][flight]][stand] *
-                        teletrap_can_be_used(flight, stand)
+                        (1 - self.teletrap_can_be_used(flight, stand))
                         for stand in AIRCRAFT_STANDS]) 
 
 
