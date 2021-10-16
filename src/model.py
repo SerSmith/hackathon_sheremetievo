@@ -82,12 +82,18 @@ class OptimizeDay:
             current_dt = current_dt + timedelta(minutes = 5)
         return result_5minutes_list
 
+        # Cтоимость руления по аэродрому
+        def airport_taxiing_cost_func(self, flight):
+            # Стоимость руления определяется как время руления (однозначно определяется МС ВС) умноженное на тариф за минуту руления
+        return sum([self.model.AS_occupied[flight, stand, time] * AIRCRAFT_STANDS_DATA['Taxiing_Time'][stand] * HANDLING_RATES['Aircraft_Taxiing_Cost_per_Minute'] for stand, time in product(AIRCRAFT_STANDS, TIMES)]) 
+
 
 
     def make_model(self, start_dt = datetime.datetime(2019, 5, 17, 0, 0), end_dt = datetime.datetime(2019, 5, 17, 23, 55)):
 
         FLIGHTS_DATA = self.data.get_flights()
         AIRCRAFT_STANDS_DATA = self.data.get_aircraft_stands()
+        HANDLING_RATES = self.data.get_handling_rates()
 
 
         # Рейсы
@@ -103,21 +109,12 @@ class OptimizeDay:
         # занимаемые места (Рейс * МС * 5минутки) - переменные
         self.model.AS_occupied = pyo.Var(FLIGHTS, AIRCRAFT_STANDS, TIMES, within=pyo.Binary, initialize=0)
 
+        # Cтоимость руления по аэродрому
+        self.model.airport_taxiing_cost = pyo.Expression(FLIGHTS, rule=self.airport_taxiing_cost_func)
+
 
         # Cтоимость руления по аэродрому
-
-
-        def airport_taxiing_cost_func(flight):
-            # Стоимость руления определяется как время руления (однозначно определяется МС ВС) умноженное на тариф за минуту руления
-        
-        return sum([model.AS_occupied[flight, stand, time] * AIRCRAFT_STANDS_DATA['Taxiing_Time'][stand] *  for stand, time in product(AIRCRAFT_STANDS, TIMES)]) 
-
-
-
-        self.model.airport_taxiing_cost = pyo.Expression(FLIGHTS, rule=airport_taxiing_cost_func)
-
-        #self.model.occupied_as_cost
-
+        self.model.airport_taxiing_cost = pyo.Expression(FLIGHTS, rule=self.airport_taxiing_cost_func)
         
         # MC_VC:
         #     Стоимость
