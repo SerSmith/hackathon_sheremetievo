@@ -206,11 +206,11 @@ class OptimizeDay:
     def AS_using_cost_def(self, stand):
         return 0
     
-    def only_one_flight_per_place(self, model, stand, time):
-        return sum([model.AS_occupied_time[flight, stand, time] for flight in self.FLIGHTS] <= 1)
+    def only_one_flight_per_place_func(self, model, stand, time):
+        return sum([model.AS_occupied_time[flight, stand, time] for flight in self.FLIGHTS]) <= 1
     
-    # def two_wide_near_are_prohibited_func():
-    #     return 0 
+    def two_wide_near_are_prohibited_func():
+        return 0 
 
 
     def make_model(self, start_dt=datetime(2019, 5, 17, 0, 0), end_dt=datetime(2019, 5, 17, 23, 55)):
@@ -231,7 +231,7 @@ class OptimizeDay:
 
         # занимаемые времена с учетом времени
         print(len(self.FLIGHTS), len(self.AIRCRAFT_STANDS), len(self.TIMES))
-        self.model.AS_occupied_time = pyo.Expression(self.FLIGHTS, self.AIRCRAFT_STANDS, self.TIMES, rule=lambda model, flight, stand, time: 0)
+        self.model.AS_occupied_time = pyo.Expression(self.FLIGHTS, self.AIRCRAFT_STANDS, self.TIMES, rule=self.time_calculate_func)
         print('hehe I am here')
         # Cтоимость руления по аэродрому
         self.model.airport_taxiing_cost = pyo.Expression(self.FLIGHTS, rule=self.airport_taxiing_cost_func)
@@ -250,9 +250,10 @@ class OptimizeDay:
 
         self.model.only_one_flight_per_place = pyo.Constraint(self.AIRCRAFT_STANDS, self.TIMES, rule=self.only_one_flight_per_place_func)
 
-        # self.model.two_wide_near_are_prohibited = pyo.Constraint(self.flights, self.TIMES, rule=self.two_wide_near_are_prohibited_func)
+        self.model.two_wide_near_are_prohibited = pyo.Constraint(self.flights, self.TIMES, rule=self.two_wide_near_are_prohibited_func)
 
         self.opt_output = self.opt.solve(self.model, logfile='SOLVE_LOG', solnfile='SOLNFILE')
+        print(self.opt_output)
 
 
     def get_pyomo_obj(self):
@@ -261,7 +262,7 @@ class OptimizeDay:
 if __name__ == "__main__":
     d = DataExtended()
     opt = OptimizeDay(d)
-    opt.make_model()
+    opt.make_model(datetime(2019, 5, 17, 0, 0), datetime(2019, 5, 17, 0, 20))
 
 
 
