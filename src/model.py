@@ -146,7 +146,7 @@ class OptimizeDay:
         """ Находим тип ВС ('Regional', 'Narrow_Body', 'Wide_Body') """
         capacity_of_flight = self.FLIGHTS_DATA['flight_AC_PAX_capacity_total'][flight]
         # Если будут другие данные, то надо добавить сортировку!
-        for (aircraft_class, number_seats) in self.AIRCRAFT_CLASSES['Max_Seats'].items():
+        for (aircraft_class, number_seats) in self.AIRCRAFT_CLASSES_DATA['Max_Seats'].items():
             if capacity_of_flight <= number_seats:
                 return aircraft_class
 
@@ -209,7 +209,7 @@ class OptimizeDay:
         self.model.AS_occupied = pyo.Var(self.FLIGHTS, self.AIRCRAFT_STANDS, within=pyo.Binary, initialize=0)
 
         # занимаемые времена с учетом времени
-        # self.model.AS_occupied_time = pyo.Expression(self.FLIGHTS, self.AIRCRAFT_STANDS, self.TIMES, rule=self.time_calculate_func)
+        self.model.AS_occupied_time = pyo.Expression(self.FLIGHTS, self.AIRCRAFT_STANDS, self.TIMES, rule=self.time_calculate_func)
 
         # Cтоимость руления по аэродрому
         self.model.airport_taxiing_cost = pyo.Expression(self.FLIGHTS, rule=self.airport_taxiing_cost_func)
@@ -237,7 +237,7 @@ if __name__ == "__main__":
     opt = OptimizeDay(d)
     opt.make_model()
 
-    with open(, 'wb'):
+    # with open(, 'wb'):
 
 
 # Все места стоянок делятся на контактные (посадка/высадка через телетрап) и удалённые (посадка/высадка 
