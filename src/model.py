@@ -5,6 +5,7 @@ import os
 from  itertools import product
 from datetime import datetime, timedelta
 import numpy as np
+import pickle
 
 class Data():
     def __init__(self, data_folder: str='../data'):
@@ -27,7 +28,7 @@ class Data():
         if self.handling_rates_dict is None:
             handling_rates_folder = os.path.join(self.data_folder, 'Handling_Rates_Public.csv')
             handling_rates_pd = pd.read_csv(handling_rates_folder)
-            self.handling_rates_dict = handling_rates_pd.set_index('Name').to_dict()
+            self.handling_rates_dict = handling_rates_pd.set_index('Name').to_dict()['Value']
         return self.handling_rates_dict
 
     def get_handling_time(self):
@@ -43,13 +44,17 @@ class Data():
         if self.aircraft_stands_dict is None:
             aircraft_stands_folder = os.path.join(self.data_folder, 'Aircraft_Stands_Public.csv')
             aircraft_stands_pd = pd.read_csv(aircraft_stands_folder)
-            self.aircraft_stands_dict  = aircraft_stands_pd.set_index('Aircraft_Stand').to_dict()
+            aircraft_stands_pd = aircraft_stands_pd.set_index('Aircraft_Stand')
+            aircraft_stands_pd['index'] = aircraft_stands_pd.index
+            self.aircraft_stands_dict = aircraft_stands_pd.to_dict()
         return self.aircraft_stands_dict
 
     def get_flights(self):
         if self.flights_dict is None:
             flights_folder = os.path.join(self.data_folder, 'Timetable_Public.csv')
             flights_pd = pd.read_csv(flights_folder)
+            flights_pd = flights_pd.reset_index(drop=True)
+            flights_pd['index'] = flights_pd.index
             flights_pd.drop(['Aircraft_Stand'], axis=1, inplace=True)
             self.flights_dict  = flights_pd.to_dict()
         return self.flights_dict 
@@ -63,7 +68,7 @@ class DataExtended(Data):
 
     def get_flights(self):
         flights = super().get_flights()
-        flights['quantity_busses'] = {np.ceil(flights['flight_PAX'][key] / self.bus_capacity) for key in flights['flight_PAX'].keys()}
+        flights['quantity_busses'] = {key: np.ceil(flights['flight_PAX'][key] / self.bus_capacity) for key in flights['flight_PAX'].keys()}
         return flights
 
 
@@ -86,7 +91,20 @@ class OptimizeDay:
         self.data = data
         self.FLIGHTS_DATA = data.get_flights()
         self.AIRCRAFT_STANDS_DATA = data.get_aircraft_stands()
-        self.HANDLING_RATES = data.get_handling_rates()
+        self.HANDLING_RATES_DATA = data.get_handling_rates()
+        self.AIRCRAFT_CLASSES_DATA = data.get_aircraft_classes()
+        self.HANGLING_TIME = data.get_handling_time()
+
+        self.FLIGHTS = None
+        self.AIRCRAFT_STANDS = None
+        self.TIMES = None
+
+        self.opt = None
+
+    def set_solver(self):
+        self.opt = SolverFactory('cbc', executable="/usr/local/bin/cbc")
+        self.opt.options['ratioGap'] = 0.1
+        self.opt.options['sec'] = 30
 
     
     @staticmethod
@@ -99,13 +117,13 @@ class OptimizeDay:
         return result_5minutes_list
 
     # Cтоимость руления по аэродрому
-    def airport_taxiing_cost_func(self, flight):
+    def airport_taxiing_cost_func(self, model, flight):
         # Стоимость руления определяется как время руления (однозначно определяется МС ВС) умноженное на тариф за минуту руления
         # TODO учесть, что некорректно может считаться из-замножественного time
         return sum([self.model.AS_occupied[flight, stand] *
                     self.AIRCRAFT_STANDS_DATA['Taxiing_Time'][stand] *
-                    self.HANDLING_RATES['Aircraft_Taxiing_Cost_per_Minute']
-                    for stand in AIRCRAFT_STANDS])
+                    self.HANDLING_RATES_DATA['Aircraft_Taxiing_Cost_per_Minute']
+                    for stand in self.AIRCRAFT_STANDS])
     
 
     def teletrap_can_be_used(self, flight, stand):
@@ -126,35 +144,32 @@ class OptimizeDay:
     
     def find_aircraft_class(self, flight):
         """ Находим тип ВС ('Regional', 'Narrow_Body', 'Wide_Body') """
-        capacity_of_flight = self.get_flights['flight_AC_PAX_capacity_total'][flight]
+        capacity_of_flight = self.FLIGHTS_DATA['flight_AC_PAX_capacity_total'][flight]
         # Если будут другие данные, то надо добавить сортировку!
-        for (aircraft_class, number_seats) in self.get_aircraft_classes['Max_Seats'].items():
+        for (aircraft_class, number_seats) in self.AIRCRAFT_CLASSES['Max_Seats'].items():
             if capacity_of_flight <= number_seats:
                 return aircraft_class
 
-    def busses_cost_func(self, flight):
+    def busses_cost_func(self, model, flight):
         # При использовании удалённых МС ВС для посадки/высадки пассажиров необходимо использовать перронные автобусы. Вместимость одного перронного автобуса 80 пассажиров. Время движения автобуса от терминала и стоимость минуты использования автобуса указаны в соответствующих таблицах.
         return sum([self.model.AS_occupied[flight, stand] *
                     self.FLIGHTS_DATA['quantity_busses'][flight] *
-                    self.AIRCRAFT_STANDS_DATA[self.FLIGHTS_DATA['flight_terminal_#'][flight]][stand] *
+                    self.AIRCRAFT_STANDS_DATA[str(self.FLIGHTS_DATA['flight_terminal_#'][flight])][stand] *
                     (1 - self.teletrap_can_be_used(flight, stand))
-                    for stand in AIRCRAFT_STANDS])
+                    for stand in self.AIRCRAFT_STANDS])
         
     def time_calculate_func(self, model, flight, aircraft_stand, time):
-        a = 1
-        flight_time = self.FLIGHTS_DATA['flight_datetime'][flight]
-        taxiing_time = self.AIRCRAFT_STANDS_DATA['Taxiing_Time'][aircraft_stand]
+        flight_time = datetime.strptime(self.FLIGHTS_DATA['flight_datetime'][flight], '%Y-%m-%d %H:%M:%S')
+        taxiing_time = int(self.AIRCRAFT_STANDS_DATA['Taxiing_Time'][aircraft_stand])
         arrival_or_depature = self.FLIGHTS_DATA['flight_AD'][flight]
         use_trap_flg = self.teletrap_can_be_used(flight, aircraft_stand)
-
 
         if use_trap_flg:
             column_handling_time = 'JetBridge'
         else: 
             column_handling_time = 'Away'
-        aircraft_class = self.get_airctaft_class(flight)
-        handling_time = self.get_handling_time()[column_handling_time][aircraft_class]
-
+        aircraft_class = self.find_aircraft_class(flight)
+        handling_time = self.HANGLING_TIME[column_handling_time][aircraft_class]
 
         if arrival_or_depature == 'D':
             if (flight_time - timedelta(minutes=taxiing_time) > time) & \
@@ -178,37 +193,38 @@ class OptimizeDay:
 
 
     def make_model(self, start_dt=datetime(2019, 5, 17, 0, 0), end_dt=datetime(2019, 5, 17, 23, 55)):
-    
 
-        # Рейсы
-        FLIGHTS = self.FLIGHTS_DATA.keys()
-        # Места стоянки
-        AIRCRAFT_STANDS = self.AIRCRAFT_STANDS_DATA.keys()
-        # Временные отрезки
-        TIMES = self.__get_times(start_dt=start_dt, end_dt=end_dt)
-
+        self.set_solver()
 
         self.model = pyo.ConcreteModel()
+        # Рейсы
+        self.FLIGHTS = self.FLIGHTS_DATA['index'].values()
+        # Места стоянки
+        self.AIRCRAFT_STANDS = self.AIRCRAFT_STANDS_DATA['index'].values()
+        # Временные отрезки
+        self.TIMES = self.__get_times(start_dt=start_dt, end_dt=end_dt)
+
     
         # занимаемые места (Рейс * МC) - переменные
-        self.model.AS_occupied = pyo.Var(FLIGHTS, AIRCRAFT_STANDS, within=pyo.Binary, initialize=0)
+        self.model.AS_occupied = pyo.Var(self.FLIGHTS, self.AIRCRAFT_STANDS, within=pyo.Binary, initialize=0)
 
         # занимаемые времена с учетом времени
-        self.model.AS_time_occupied = pyo.Expression(FLIGHTS, AIRCRAFT_STANDS, TIMES, rule=self.time_calculate_func)
+        # self.model.AS_occupied_time = pyo.Expression(self.FLIGHTS, self.AIRCRAFT_STANDS, self.TIMES, rule=self.time_calculate_func)
 
         # Cтоимость руления по аэродрому
-        self.model.airport_taxiing_cost = pyo.Expression(FLIGHTS, rule=self.airport_taxiing_cost_func)
+        self.model.airport_taxiing_cost = pyo.Expression(self.FLIGHTS, rule=self.airport_taxiing_cost_func)
 
         # Стоимость использования МС ВС
-        self.model.AS_using_cost = pyo.Expression(AIRCRAFT_STANDS, rule=self.AS_using_cost_def)
+        self.model.AS_using_cost = pyo.Expression(self.AIRCRAFT_STANDS, rule=self.AS_using_cost_def)
 
         # Стоимость использования перронных автобусов для посадки/высадки пассажиров
-        self.model.busses_cost = pyo.Expression(FLIGHTS, rule=self.busses_cost_func)
+        self.model.busses_cost = pyo.Expression(self.FLIGHTS, rule=self.busses_cost_func)
 
         # Целевая переменная
-        self.model.OBJ = pyo.Objective(expr=sum([self.model.airport_taxiing_cost[flight] for flight in FLIGHTS]) +\
-                                            sum([self.model.AS_using_cost[stand] for stand in AIRCRAFT_STANDS]) +\
-                                            sum([self.model.busses_cost[flight] for flight in FLIGHTS]), sense=pyo.minimize)
+        # self.model.OBJ = pyo.Objective(expr=sum([self.model.airport_taxiing_cost[flight] for flight in FLIGHTS]) +\
+        #                                     sum([self.model.AS_using_cost[stand] for stand in AIRCRAFT_STANDS]) +\
+        #                                     sum([self.model.busses_cost[flight] for flight in FLIGHTS]), sense=pyo.minimize)
+        self.model.OBJ = pyo.Objective(expr=0, sense=pyo.minimize)
 
         self.opt_output = self.opt.solve(self.model, logfile='SOLVE_LOG', solnfile='SOLNFILE')
 
@@ -220,6 +236,8 @@ if __name__ == "__main__":
     d = DataExtended()
     opt = OptimizeDay(d)
     opt.make_model()
+
+    with open(, 'wb'):
 
 
 # Все места стоянок делятся на контактные (посадка/высадка через телетрап) и удалённые (посадка/высадка 
