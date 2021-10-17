@@ -187,26 +187,21 @@ class OptimizeDay:
             column_handling_time = 'Away'
         aircraft_class = self.FLIGHTS_DATA['aircraft_class'][flight]
         handling_time = self.HANGLING_TIME[column_handling_time][aircraft_class]
-        if self.model.AS_occupied[flight, aircraft_stand] == 1:
-            if arrival_or_depature == 'D':
-                if (flight_time - timedelta(minutes=taxiing_time) > time) & \
-                    (flight_time - timedelta(minutes=handling_time) - timedelta(minutes=taxiing_time) < time):
-                        result = 1
-                else:
-                    result = 0
-            elif arrival_or_depature == 'A':
-                if (flight_time + timedelta(minutes=taxiing_time) < time) & \
-                    (flight_time + timedelta(minutes=handling_time) + timedelta(minutes=taxiing_time) > time):
-                        result = 1
-                else:
-                    result = 0
+        if arrival_or_depature == 'D':
+            if (flight_time - timedelta(minutes=taxiing_time) > time) & \
+                (flight_time - timedelta(minutes=handling_time) - timedelta(minutes=taxiing_time) < time):
+                    result = 1
             else:
-                raise ValueError(f"arrival_or_depature имеет некорректное значение: {arrival_or_depature} , а должно быть A или D")
-        elif self.model.AS_occupied[flight, aircraft_stand] == 0:
-            result = 0
+                result = 0
+        elif arrival_or_depature == 'A':
+            if (flight_time + timedelta(minutes=taxiing_time) < time) & \
+                (flight_time + timedelta(minutes=handling_time) + timedelta(minutes=taxiing_time) > time):
+                    result = 1
+            else:
+                result = 0
         else:
-            raise ValueError(f"varibale AS_occupied is {self.model.AS_occupied[flight, aircraft_stand]}")
-        return result
+            raise ValueError(f"arrival_or_depature имеет некорректное значение: {arrival_or_depature} , а должно быть A или D")
+        return result * self.model.AS_occupied[flight, aircraft_stand]
     
     def AS_using_cost_def(self, stand):
         return 0
