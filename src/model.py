@@ -80,6 +80,7 @@ class DataExtended(Data):
 
     def get_flights(self):
         flights = super().get_flights()
+        flights['flight_datetime'] = {i:j for (i,j) in enumerate(list(map(lambda x: datetime.strptime(x, '%Y-%m-%d %H:%M:%S'), list(flights['flight_datetime'].values()))))}
         flights['quantity_busses'] = {key: np.ceil(flights['flight_PAX'][key] / self.bus_capacity) for key in flights['flight_PAX'].keys()}
         flights['aircraft_class'] = self.__find_aircraft_class(flights)
         return flights
@@ -176,7 +177,7 @@ class OptimizeDay:
                     for stand in self.AIRCRAFT_STANDS])
         
     def time_calculate_func(self, model, flight, aircraft_stand, time):
-        flight_time = datetime.strptime(self.FLIGHTS_DATA['flight_datetime'][flight], '%Y-%m-%d %H:%M:%S')
+        flight_time = self.FLIGHTS_DATA['flight_datetime'][flight]
         taxiing_time = int(self.AIRCRAFT_STANDS_DATA['Taxiing_Time'][aircraft_stand])
         arrival_or_depature = self.FLIGHTS_DATA['flight_AD'][flight]
         use_trap_flg = self.teletrap_can_be_used(flight, aircraft_stand)
