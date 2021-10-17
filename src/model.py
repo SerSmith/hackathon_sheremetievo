@@ -66,10 +66,28 @@ class DataExtended(Data):
         self.bus_capacity = bus_capacity
         
 
+    def __find_aircraft_class(self, flights_data):
+        aircraft_class_dict = dict()
+        aircraft_classes_data = self.get_aircraft_classes()
+        for (flight_number, capacity_of_flight) in flights_data['flight_AC_PAX_capacity_total'].items():
+            for (aircraft_class, number_seats) in aircraft_classes_data['Max_Seats'].items():
+                if capacity_of_flight <= number_seats:
+                    aircraft_class_dict.update({flight_number: aircraft_class })
+                    break
+        return aircraft_class_dict
+
+
+
     def get_flights(self):
         flights = super().get_flights()
         flights['quantity_busses'] = {key: np.ceil(flights['flight_PAX'][key] / self.bus_capacity) for key in flights['flight_PAX'].keys()}
+        flights['aircraft_class'] = self.__find_aircraft_class(flights)
         return flights
+
+    def get_aircraft_classes(self):
+        aircraft_classes = super().get_aircraft_classes()
+        aircraft_classes = {'Max_Seats': {k: v for k, v in sorted(aircraft_classes['Max_Seats'].items(), key=lambda item: item[1])}}
+        return aircraft_classes
 
 
 
@@ -145,7 +163,6 @@ class OptimizeDay:
     def find_aircraft_class(self, flight):
         """ Находим тип ВС ('Regional', 'Narrow_Body', 'Wide_Body') """
         capacity_of_flight = self.FLIGHTS_DATA['flight_AC_PAX_capacity_total'][flight]
-        # Если будут другие данные, то надо добавить сортировку!
         for (aircraft_class, number_seats) in self.AIRCRAFT_CLASSES_DATA['Max_Seats'].items():
             if capacity_of_flight <= number_seats:
                 return aircraft_class
@@ -168,9 +185,8 @@ class OptimizeDay:
             column_handling_time = 'JetBridge'
         else: 
             column_handling_time = 'Away'
-        aircraft_class = self.find_aircraft_class(flight)
+        aircraft_class = self.FLIGHTS_DATA['aircraft_class'][flight]
         handling_time = self.HANGLING_TIME[column_handling_time][aircraft_class]
-
         if arrival_or_depature == 'D':
             if (flight_time - timedelta(minutes=taxiing_time) > time) & \
                 (flight_time - timedelta(minutes=handling_time) - timedelta(minutes=taxiing_time) < time):
@@ -185,8 +201,7 @@ class OptimizeDay:
                 result = 0
         else:
             raise ValueError(f"arrival_or_depature имеет некорректное значение: {arrival_or_depature} , а должно быть A или D")
-
-        return result
+        return result * self.model.AS_occupied[flight, aircraft_stand]
     
     def AS_using_cost_def(self, stand):
         return 0
