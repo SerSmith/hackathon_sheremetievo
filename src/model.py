@@ -205,6 +205,14 @@ class OptimizeDay:
         return result * self.model.AS_occupied[flight, aircraft_stand]
     
     def AS_using_cost_def(self, stand):
+        # Стоимость использования MC VC
+        return sum([self.model.AS_occupied[flight, stand] *
+                    self.HANGLING_TIME['JetBridge_Handling_Time'][self.FLIGHTS_DATA['aircraft_class'][stand]] *
+                    self.HANDLING_RATES_DATA['JetBridge_Aircraft_Stand_Cost_per_Minute'] * self.teletrap_can_be_used[flight, stand] +
+                    self.model.AS_occupied[flight, stand] *
+                    self.HANGLING_TIME['Away_Handling_Time'][self.FLIGHTS_DATA['aircraft_class'][stand]] *
+                    self.HANDLING_RATES_DATA['Away_Aircraft_Stand_Cost_per_Minute'] * self.teletrap_can_be_used[flight, stand]
+                    for stand in self.AIRCRAFT_STANDS])
         return 0
     
     def only_one_flight_per_place_func(self, model, stand, time):
