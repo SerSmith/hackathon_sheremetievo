@@ -209,8 +209,24 @@ class OptimizeDay:
     def only_one_flight_per_place_func(self, model, stand, time):
         return sum([model.AS_occupied_time[flight, stand, time] for flight in self.FLIGHTS]) <= 1
     
-    def two_wide_near_are_prohibited_func():
-        return 0 
+    def teletrap_can_be_used_on_stand(self, stand):
+        return self.AIRCRAFT_STANDS_DATA['JetBridge_on_Arrival'][stand] != 'N' and self.AIRCRAFT_STANDS_DATA['JetBridge_on_Departure'][stand] != 'N'
+    
+    def two_wide_near_are_prohibited_func(self, model, stand, time):
+
+        if stand != min(self.AIRCRAFT_STANDS):
+            left_stand = sum([model.AS_occupied_time[flight, stand - 1, time] for flight in self.FLIGHTS_WIDE])
+        else:
+            left_stand = 0
+        
+        middle_stand = sum([model.AS_occupied_time[flight, stand, time] for flight in self.FLIGHTS_WIDE])
+
+        if stand != min(self.AIRCRAFT_STANDS):
+            right_stand = sum([model.AS_occupied_time[flight, stand + 1, time] for flight in self.FLIGHTS_WIDE])
+        else:
+            right_stand = 0
+        
+        return left_stand + middle_stand + right_stand <= 1
 
 
     def make_model(self, start_dt=datetime(2019, 5, 17, 0, 0), end_dt=datetime(2019, 5, 17, 23, 55)):
@@ -224,8 +240,11 @@ class OptimizeDay:
         self.AIRCRAFT_STANDS = self.AIRCRAFT_STANDS_DATA['index'].values()
         # Временные отрезки
         self.TIMES = self.__get_times(start_dt=start_dt, end_dt=end_dt)
+        # Места стоянки с телетрапом
+        self.AIRCRAFT_STANDS_WITH_TRAPS = [stand for stand in self.AIRCRAFT_STANDS if self.teletrap_can_be_used_on_stand(stand)]
 
-    
+        self.FLIGHTS_WIDE = [flight for flight in self.FLIGHTS if self.FLIGHTS_DATA['aircraft_class'][flight] == 'Wide_Body']
+
         # занимаемые места (Рейс * МC) - переменные
         self.model.AS_occupied = pyo.Var(self.FLIGHTS, self.AIRCRAFT_STANDS, within=pyo.Binary, initialize=0)
 
@@ -250,19 +269,27 @@ class OptimizeDay:
 
         self.model.only_one_flight_per_place = pyo.Constraint(self.AIRCRAFT_STANDS, self.TIMES, rule=self.only_one_flight_per_place_func)
 
-        self.model.two_wide_near_are_prohibited = pyo.Constraint(self.flights, self.TIMES, rule=self.two_wide_near_are_prohibited_func)
+        self.model.two_wide_near_are_prohibited = pyo.Constraint(self.AIRCRAFT_STANDS_WITH_TRAPS, self.TIMES, rule=self.two_wide_near_are_prohibited_func)
 
         self.opt_output = self.opt.solve(self.model, logfile='SOLVE_LOG', solnfile='SOLNFILE')
         print(self.opt_output)
 
 
-    def get_pyomo_obj(self):
-        return self.model
+    def get_solution(self):
+        pass
+        
 
 if __name__ == "__main__":
     d = DataExtended()
     opt = OptimizeDay(d)
-    opt.make_model(datetime(2019, 5, 17, 0, 0), datetime(2019, 5, 17, 0, 20))
+    opt.make_model(datetime(2019, 5, 17, 0, 0), datetime(2019, 5, 17, 0, 5))
+
+    # import dill
+
+    # a = dill.detect.baditems(opt)
+    # print(a)
+    # with open('opt_example.pikle', 'wb') as h:
+    #     pickle.dump(opt, h, protocol=pickle.HIGHEST_PROTOCOL)
 
 
 
