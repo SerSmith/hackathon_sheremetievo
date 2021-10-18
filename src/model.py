@@ -6,6 +6,8 @@ from  itertools import product
 from datetime import datetime, timedelta
 import numpy as np
 import pickle
+import time
+
 
 class Data():
     def __init__(self, data_folder: str='../data'):
@@ -35,8 +37,6 @@ class Data():
         if self.handling_time_dict is None:
             handling_time_folder = os.path.join(self.data_folder, 'Handling_Time_Public.csv')
             handling_time_pd = pd.read_csv(handling_time_folder)
-            handling_time_pd = handling_time_pd.rename(columns={'JetBridge_Handling_Time': 'JetBridge',
-        	                                                    'Away_Handling_Time': 'Away'})
             self.handling_time_dict = handling_time_pd.set_index('Aircraft_Class').to_dict()
         return self.handling_time_dict
 
@@ -183,9 +183,9 @@ class OptimizeDay:
         use_trap_flg = self.teletrap_can_be_used(flight, aircraft_stand)
 
         if use_trap_flg:
-            column_handling_time = 'JetBridge'
+            column_handling_time = 'JetBridge_Handling_Time'
         else: 
-            column_handling_time = 'Away'
+            column_handling_time = 'Away_Handling_Time'
         aircraft_class = self.FLIGHTS_DATA['aircraft_class'][flight]
         handling_time = self.HANGLING_TIME[column_handling_time][aircraft_class]
         if arrival_or_depature == 'D':
@@ -204,14 +204,14 @@ class OptimizeDay:
             raise ValueError(f"arrival_or_depature имеет некорректное значение: {arrival_or_depature} , а должно быть A или D")
         return result * self.model.AS_occupied[flight, aircraft_stand]
     
-    def AS_using_cost_def(self, stand):
+    def AS_using_cost_def(self, model, flight):
         # Стоимость использования MC VC
         return sum([self.model.AS_occupied[flight, stand] *
                     self.HANGLING_TIME['JetBridge_Handling_Time'][self.FLIGHTS_DATA['aircraft_class'][stand]] *
-                    self.HANDLING_RATES_DATA['JetBridge_Aircraft_Stand_Cost_per_Minute'] * self.teletrap_can_be_used[flight, stand] +
+                    self.HANDLING_RATES_DATA['JetBridge_Aircraft_Stand_Cost_per_Minute'] * self.teletrap_can_be_used(flight, stand) +
                     self.model.AS_occupied[flight, stand] *
                     self.HANGLING_TIME['Away_Handling_Time'][self.FLIGHTS_DATA['aircraft_class'][stand]] *
-                    self.HANDLING_RATES_DATA['Away_Aircraft_Stand_Cost_per_Minute'] * self.teletrap_can_be_used[flight, stand]
+                    self.HANDLING_RATES_DATA['Away_Aircraft_Stand_Cost_per_Minute'] * self.teletrap_can_be_used(flight, stand)
                     for stand in self.AIRCRAFT_STANDS])
         return 0
     
@@ -223,14 +223,14 @@ class OptimizeDay:
     
     def two_wide_near_are_prohibited_func(self, model, stand, time):
 
-        if stand != min(self.AIRCRAFT_STANDS):
+        if stand - 1 in self.AIRCRAFT_STANDS:
             left_stand = sum([model.AS_occupied_time[flight, stand - 1, time] for flight in self.FLIGHTS_WIDE])
         else:
             left_stand = 0
         
         middle_stand = sum([model.AS_occupied_time[flight, stand, time] for flight in self.FLIGHTS_WIDE])
 
-        if stand != min(self.AIRCRAFT_STANDS):
+        if stand + 1 in self.AIRCRAFT_STANDS :
             right_stand = sum([model.AS_occupied_time[flight, stand + 1, time] for flight in self.FLIGHTS_WIDE])
         else:
             right_stand = 0
@@ -258,14 +258,17 @@ class OptimizeDay:
         self.model.AS_occupied = pyo.Var(self.FLIGHTS, self.AIRCRAFT_STANDS, within=pyo.Binary, initialize=0)
 
         # занимаемые времена с учетом времени
+        t = time.time()
         print(len(self.FLIGHTS), len(self.AIRCRAFT_STANDS), len(self.TIMES))
         self.model.AS_occupied_time = pyo.Expression(self.FLIGHTS, self.AIRCRAFT_STANDS, self.TIMES, rule=self.time_calculate_func)
         print('hehe I am here')
+        elapsed = time.time() - t
+        print(elapsed)
         # Cтоимость руления по аэродрому
         self.model.airport_taxiing_cost = pyo.Expression(self.FLIGHTS, rule=self.airport_taxiing_cost_func)
 
         # Стоимость использования МС ВС
-        self.model.AS_using_cost = pyo.Expression(self.AIRCRAFT_STANDS, rule=self.AS_using_cost_def)
+        self.model.AS_using_cost = pyo.Expression(self.FLIGHTS, rule=self.AS_using_cost_def)
 
         # Стоимость использования перронных автобусов для посадки/высадки пассажиров
         self.model.busses_cost = pyo.Expression(self.FLIGHTS, rule=self.busses_cost_func)
@@ -290,39 +293,6 @@ class OptimizeDay:
 
 if __name__ == "__main__":
     d = DataExtended()
+    
     opt = OptimizeDay(d)
-    opt.make_model(datetime(2019, 5, 17, 0, 0), datetime(2019, 5, 17, 0, 5))
-
-    # import dill
-
-    # a = dill.detect.baditems(opt)
-    # print(a)
-    # with open('opt_example.pikle', 'wb') as h:
-    #     pickle.dump(opt, h, protocol=pickle.HIGHEST_PROTOCOL)
-
-
-
-
-# Все места стоянок делятся на контактные (посадка/высадка через телетрап) и удалённые (посадка/высадка 
-# с помощью перронного автобуса). Телетрап на данном МС доступен только в случае, если:
-
-#     1. терминал рейса соответствует терминалу М
-#     2. значение поля flight_ID рейса (метка МВЛ/ВВЛ – Domestic/Intern£tion£l) совпадает с соответствующей меткой поля
-# JetBridge_on_Arriv(для прилетающих рейсов) или JetBridge_on_Dep£rture (для вылетающих рейсов) МС
-
-# На МС с телетрапами существует дополнительное ограничение по расстановке ВС: на соседних МС
-# (т.е. тех МС, у которых номер отличается на 1) не могут находиться одновременно два
-# широкофюзеляжных ВС (ВС класса “Wide_Body”)
-
-# При использовании удалённых МС ВС для посадки/высадки пассажиров необходимо использовать
-# перронные автобусы. Вместимость одного перронного автобуса 80 пассажиров. Время движения
-# автобуса от терминала и стоимость минуты использования автобуса указаны в соответствующих
-# таблицах.
-
-# Каждый тип ВС имеет свой протокол обслуживания (время обслуживания) на прилёт и вылет 
-# (и, как следствие, разное время обслуживания и себестоимость)
-
-
-# Тариф на использование МС ВС определяется наличием/отсутствием телетрапа на МС ВС (NB!
-# Наличие телетрапа не означает возможность его использования, см. п. 1) и временем нахождения
-# ВС на МС.
+    opt.make_model(datetime(2019, 5, 17, 0, 0), datetime(2019, 5, 17, 23, 55))
