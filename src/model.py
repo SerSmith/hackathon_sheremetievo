@@ -80,6 +80,7 @@ class DataExtended(Data):
 
     def get_flights(self):
         flights = super().get_flights()
+        flights['flight_datetime'] = {i:j for (i,j) in enumerate(list(map(lambda x: datetime.strptime(x, '%Y-%m-%d %H:%M:%S'), list(flights['flight_datetime'].values()))))}
         flights['quantity_busses'] = {key: np.ceil(flights['flight_PAX'][key] / self.bus_capacity) for key in flights['flight_PAX'].keys()}
         flights['aircraft_class'] = self.__find_aircraft_class(flights)
         return flights
@@ -176,7 +177,7 @@ class OptimizeDay:
                     for stand in self.AIRCRAFT_STANDS])
         
     def time_calculate_func(self, model, flight, aircraft_stand, time):
-        flight_time = datetime.strptime(self.FLIGHTS_DATA['flight_datetime'][flight], '%Y-%m-%d %H:%M:%S')
+        flight_time = self.FLIGHTS_DATA['flight_datetime'][flight]
         taxiing_time = int(self.AIRCRAFT_STANDS_DATA['Taxiing_Time'][aircraft_stand])
         arrival_or_depature = self.FLIGHTS_DATA['flight_AD'][flight]
         use_trap_flg = self.teletrap_can_be_used(flight, aircraft_stand)
@@ -204,6 +205,14 @@ class OptimizeDay:
         return result * self.model.AS_occupied[flight, aircraft_stand]
     
     def AS_using_cost_def(self, stand):
+        # Стоимость использования MC VC
+        return sum([self.model.AS_occupied[flight, stand] *
+                    self.HANGLING_TIME['JetBridge_Handling_Time'][self.FLIGHTS_DATA['aircraft_class'][stand]] *
+                    self.HANDLING_RATES_DATA['JetBridge_Aircraft_Stand_Cost_per_Minute'] * self.teletrap_can_be_used[flight, stand] +
+                    self.model.AS_occupied[flight, stand] *
+                    self.HANGLING_TIME['Away_Handling_Time'][self.FLIGHTS_DATA['aircraft_class'][stand]] *
+                    self.HANDLING_RATES_DATA['Away_Aircraft_Stand_Cost_per_Minute'] * self.teletrap_can_be_used[flight, stand]
+                    for stand in self.AIRCRAFT_STANDS])
         return 0
     
     def only_one_flight_per_place_func(self, model, stand, time):
