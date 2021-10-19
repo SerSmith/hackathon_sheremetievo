@@ -5,7 +5,7 @@ import os
 from  itertools import product
 from datetime import datetime, timedelta
 import numpy as np
-import pickle
+import cloudpickle
 import time
 
 
@@ -122,8 +122,8 @@ class OptimizeDay:
 
     def set_solver(self):
         self.opt = SolverFactory('cbc', executable="/usr/local/bin/cbc")
-        self.opt.options['ratioGap'] = 0.1
-        self.opt.options['sec'] = 30
+        self.opt.options['ratioGap'] = 0.00000001
+        self.opt.options['sec'] = 20000
 
     
     @staticmethod
@@ -160,13 +160,6 @@ class OptimizeDay:
                 (self.FLIGHTS_DATA['flight_AD'][flight] == 'D'))
 
         return cond1 and cond2
-    
-    def find_aircraft_class(self, flight):
-        """ Находим тип ВС ('Regional', 'Narrow_Body', 'Wide_Body') """
-        capacity_of_flight = self.FLIGHTS_DATA['flight_AC_PAX_capacity_total'][flight]
-        for (aircraft_class, number_seats) in self.AIRCRAFT_CLASSES_DATA['Max_Seats'].items():
-            if capacity_of_flight <= number_seats:
-                return aircraft_class
 
     def busses_cost_func(self, model, flight):
         # При использовании удалённых МС ВС для посадки/высадки пассажиров необходимо использовать перронные автобусы. Вместимость одного перронного автобуса 80 пассажиров. Время движения автобуса от терминала и стоимость минуты использования автобуса указаны в соответствующих таблицах.
@@ -188,6 +181,7 @@ class OptimizeDay:
             column_handling_time = 'Away_Handling_Time'
         aircraft_class = self.FLIGHTS_DATA['aircraft_class'][flight]
         handling_time = self.HANGLING_TIME[column_handling_time][aircraft_class]
+
         if arrival_or_depature == 'D':
             if (flight_time - timedelta(minutes=taxiing_time) > time) & \
                 (flight_time - timedelta(minutes=handling_time) - timedelta(minutes=taxiing_time) < time):
@@ -213,7 +207,6 @@ class OptimizeDay:
                     self.HANGLING_TIME['Away_Handling_Time'][self.FLIGHTS_DATA['aircraft_class'][stand]] *
                     self.HANDLING_RATES_DATA['Away_Aircraft_Stand_Cost_per_Minute'] * self.teletrap_can_be_used(flight, stand)
                     for stand in self.AIRCRAFT_STANDS])
-        return 0
     
     def only_one_flight_per_place_func(self, model, stand, time):
         return sum([model.AS_occupied_time[flight, stand, time] for flight in self.FLIGHTS]) <= 1
@@ -236,6 +229,9 @@ class OptimizeDay:
             right_stand = 0
         
         return left_stand + middle_stand + right_stand <= 1
+    
+    def every_flight_must_have_its_stand_func(self, model, flight):
+        return sum([self.model.AS_occupied[flight, stand] for stand in self.AIRCRAFT_STANDS]) == 1
 
 
     def make_model(self, start_dt=datetime(2019, 5, 17, 0, 0), end_dt=datetime(2019, 5, 17, 23, 55)):
@@ -283,12 +279,22 @@ class OptimizeDay:
 
         self.model.two_wide_near_are_prohibited = pyo.Constraint(self.AIRCRAFT_STANDS_WITH_TRAPS, self.TIMES, rule=self.two_wide_near_are_prohibited_func)
 
+        self.model.every_flight_must_have_its_stand = pyo.Constraint(self.FLIGHTS, rule=self.every_flight_must_have_its_stand_func)
+
+
         self.opt_output = self.opt.solve(self.model, logfile='SOLVE_LOG', solnfile='SOLNFILE')
         print(self.opt_output)
 
+    def get_model(self):
+        return self.model
 
     def get_solution(self):
-        pass
+        assert self.model is not None
+        AS_occupied_data = pd.DataFrame().from_dict(self.model.AS_occupied.extract_values(), orient='index', columns=[])
+        best_stops['flight'] = best_stops.index.map(lambda x: x[0])
+        best_stops['stand'] = best_stops.index.map(lambda x: x[1])
+        self.chosen_frames = best_stops.sort_values(by='visual', ascending=True).loc[best_stops['best_stops'] == 1, 'stop'].to_list()
+        return 
         
 
 if __name__ == "__main__":
@@ -296,3 +302,10 @@ if __name__ == "__main__":
     
     opt = OptimizeDay(d)
     opt.make_model(datetime(2019, 5, 17, 0, 0), datetime(2019, 5, 17, 23, 55))
+    o = opt.get_model()
+
+    with open("opt.pkl", 'wb') as h:
+        cloudpickle.dump(o, h)
+
+    # with open("opt.pkl", 'rb') as h:
+    #     tmp = cloudpickle.load(h)
