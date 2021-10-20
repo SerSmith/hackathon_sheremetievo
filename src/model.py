@@ -656,12 +656,12 @@ class OptimizeDay:
 
         if arrival_or_depature == 'D':
             if (flight_time - timedelta(minutes=taxiing_time) > time) & \
-                (flight_time - timedelta(minutes=handling_time) - timedelta(minutes=taxiing_time) < time):
+                (flight_time - timedelta(minutes=handling_time) - timedelta(minutes=taxiing_time) <= time):
                     result = 1
             else:
                 result = 0
         elif arrival_or_depature == 'A':
-            if (flight_time + timedelta(minutes=taxiing_time) < time) & \
+            if (flight_time + timedelta(minutes=taxiing_time) <= time) & \
                 (flight_time + timedelta(minutes=handling_time) + timedelta(minutes=taxiing_time) > time):
                     result = 1
             else:
