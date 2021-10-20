@@ -8,7 +8,7 @@ import numpy as np
 import cloudpickle
 import time
 from pyomo.core.util import quicksum, sum_product
-
+import random
 
 class Data():
     def __init__(self, data_folder: str='../data'):
@@ -96,14 +96,461 @@ class DataExtended(Data):
 
 
 class OptimizationSolution():
-    def __init__(self):
-        pass
 
-    def check_solution(self):
-        pass
 
+    def __init__(self, data_folder: str='../data', solution_path=None):
+        self.data_folder = data_folder
+        self.solution_path = solution_path
+        self.flight_data = None
+        self.aircraft_classes_df = None
+        self.timetable_df = None
+        self.aircraft_stands_df = None
+        self.handling_rates_df = None
+        self.handling_time_df = None
+        self.problem_flights = None
+        self.RANDOM_STATE = 33
+        self.BUS_CAPACITY = 80
+        self.MIN_PARKING_DELTA = pd.Timedelta('5 minutes')
+
+    
+    def load_all_data(self):
+        aircraft_classes_path = os.path.join(self.data_folder, 'AirCraftClasses_Public.csv')
+        self.aircraft_classes_df = pd.read_csv(aircraft_classes_path).reset_index(drop=True)
+
+        timetable_path = os.path.join(self.data_folder, 'Timetable_Public.csv')
+        self.timetable_df = pd.read_csv(timetable_path).reset_index(drop=True)
+
+        aircraft_stands_path = os.path.join(self.data_folder, 'Aircraft_Stands_Public.csv')
+        self.aircraft_stands_df = pd.read_csv(aircraft_stands_path).reset_index(drop=True)
+
+        handling_rates_path = os.path.join(self.data_folder, 'Handling_Rates_Public.csv')
+        self.handling_rates_df = pd.read_csv(handling_rates_path).reset_index(drop=True)
+
+        handling_time_path = os.path.join(self.data_folder, 'Handling_Time_Public.csv')
+        self.handling_time_df = pd.read_csv(handling_time_path).reset_index(drop=True)
+
+
+    def determine_aircraft_classes(self):
+        capacity_class_map = \
+            self.aircraft_classes_df.set_index('Max_Seats')['Aircraft_Class'].to_dict()
+        capacities = sorted(capacity_class_map.keys())
+        aircraft_class = self.timetable_df['flight_AC_PAX_capacity_total'].copy()
+        aircraft_class[aircraft_class <= capacities[0]] = 0
+        aircraft_class[(aircraft_class > capacities[0]) & (aircraft_class <= capacities[1])] = 1
+        aircraft_class[(aircraft_class > capacities[1]) & (aircraft_class <= capacities[2])] = 2
+        replace_dict = {i: capacity_class_map[capacities[i]] for i in range(len(capacities))}
+        return aircraft_class.replace(replace_dict).reset_index(drop=True)
+
+
+    def create_fake_solution(self, timetable_df, aircraft_stands_df):
+        """Создаёт датафрейм с фековым решением
+
+        Args:
+            timetable_df (pd.DataFrame): pd.read_csv(Timetable_Public.csv)
+            aircraft_stands (pd.DataFrame): pd.read_csv(Aircraft_Stands_Public.csv)
+
+        Returns:
+            pd.DataFrame: датафрейм с фейковым решением
+            фичи: 'Unnamed: 0', 'busy', 'flight', 'stand'
+        """
+        random.seed(self.RANDOM_STATE)
+        flight_index = sorted(timetable_df.index)
+        stands_number = aircraft_stands_df['Aircraft_Stand'].to_list()
+
+        fake_solution_df = pd.DataFrame()
+        fake_solution_df['flight'] = flight_index
+        fake_solution_df['stand'] = np.nan
+        fake_solution_df['stand'] = fake_solution_df['stand'].apply(lambda x: stands_number)
+        fake_solution_df = fake_solution_df.explode(column='stand').reset_index(drop=True)
+
+        fake_solution_df['busy'] = 0.0
+
+        for ind in flight_index:
+            solution_index = fake_solution_df[fake_solution_df['flight'] == ind].index
+            selected_index = random.choice(solution_index)
+            fake_solution_df.loc[selected_index, 'busy'] = 1.0
+
+        fake_solution_df['Unnamed: 0'] = fake_solution_df.index
+        
+        return fake_solution_df[['Unnamed: 0', 'busy', 'flight', 'stand']]
+
+    
+    def prepare_solution(self, solution_df):
+        """Извлекает из датайфрема с решением номера занятых МС и индексы рейсов
+
+        Args:
+            solution_df ([type]): [description]
+
+        Returns:
+            [type]: [description]
+        """
+        solution_df = solution_df.copy()
+
+        solution_df = solution_df[solution_df['busy'] == 1].drop(columns='busy')
+        
+        solution_df = solution_df.set_index('flight')
+        solution_df = solution_df.rename(columns={'stand': 'Aircraft_Stand', 'Unnamed: 0': 'solution_index'})
+        solution_df.index.name = None
+        return solution_df
+
+    @staticmethod
+    def get_parking_deltas(row):
+        start_points = row['start_parking']
+        end_points = row['end_parking']
+        deltas_list = []
+        if len(start_points) > 1:
+            for i in range(1, len(start_points)):
+                parking_delta = start_points[i] - end_points[i-1]
+                deltas_list.append(parking_delta)
+        return deltas_list
+
+    
     def get_solution_file(self):
-        pass   
+        if self.solution_path is None:
+            print('Путь к файлу с решением не передан. Будет сгенерировано фейковое решение.')
+            return self.create_fake_solution(self.timetable_df, self.aircraft_stands_df)
+        return pd.read_csv(self.solution_path)
+
+
+    def calculate_all_data(self, solution_df=None, taxiing_affect_parking=True):
+        """Собирает все таблицы в общий датафрейм и считает фичи
+        необходимые для анализа решения
+
+        Args:
+            solution_df (pd.DataFrame, optional): решение оптимизатора
+            taxiing_affect_parking (bool, optional, default True) 
+            учитывать время рулежки при расчете времени начала/окончания парковки
+
+        Returns:
+            pd.DataFrame: датафрейм  с фичами из входных данных и рассчитанными фичами:
+            
+            Terminal - терминал МС с телетрапом (если есть телетрап)
+            
+            Bus_Time - время пути на автобусе от МС до терминала рейса (flight_terminal_#)
+            
+            num_needed_Buses - сколько автобусов нужно для перевозки пассажиров
+            
+            is_JetBridge - оснащено ли МС телетрапом
+            
+            is_correct_JetBridge_Terminal - совпадает ли терминал МС (Terminal) с телетрапом с терминалом рейса (flight_terminal_#)
+            
+            is_correct_JetBridge - совпадает ли тип телетрапа (I/D) с типом рейса (I/D)
+            
+            JetBridge_can_be_used - можно ил использовать телетрап для данного рейса на данном МС
+            (is_JetBridge, is_correct_JetBridge_Terminal, is_correct_JetBridge должны быть True)
+            
+            start_parking, end_parking - время прибытия и убытия ВС с МС
+            
+            is_parking_conflict	- пересекается ли рейс на данном МС с другим рейсом по времени стоянки
+            
+            is_wide_body_intersect - рейс ВС Wide_body стоит на МС с телетрапом и на соседнем МС аналогичная ситуация
+            в то же время
+            
+            Handling_Time - время обслуживания (нахождения) ВС на данном МС
+            Если МС с телетрапом и его нельзя использовать (JetBridge_can_be_used=False) берётся всремя обслуживания автобусом
+            (Away_Handling_Time)
+
+            Taxiing_cost - стоимость руления ВС до данного МС
+
+            Parking_usage_cost - стоимость за использование МС
+            (даже если телетрап не используется, берется стоимость как за место с телетрапом)
+
+            Bus_usage_cost - стоимость автобусов для данного МС
+
+            Total_cost_Bus -  общая стоимость услуг для данного МС при условии использования автобусов
+            (рассчитывается и для мест с телетрапом тоже)
+
+            Total_cost_Jetbridge_(if_possibe) - общая стоимость услуг при условии использования телетрапа
+            (если выполняются все условия для этого (JetBridge_can_be_used))
+            если нет возможности использования телетрапа, то Total_cost_Jetbridge_(if_possibe) = Total_cost_Bus
+
+
+        """
+        self.load_all_data()
+        aircraft_class = self.determine_aircraft_classes()
+        handling_rates_dict = self.handling_rates_df.set_index('Name').to_dict()['Value']
+
+        if solution_df is None:
+            solution_df = self.get_solution_file()
+        
+        prepared_solution = self.prepare_solution(solution_df)
+
+        flight_data = self.timetable_df.copy()
+        flight_data['Aircraft_Class'] = aircraft_class
+        flight_data['Aircraft_Stand'] = prepared_solution['Aircraft_Stand']
+        flight_data['solution_index'] = prepared_solution['solution_index']
+        flight_data = flight_data.merge(self.aircraft_stands_df, on='Aircraft_Stand')
+        flight_data = flight_data.merge(self.handling_time_df, on='Aircraft_Class')
+        flight_data['flight_datetime'] = pd.to_datetime(flight_data['flight_datetime'])
+
+        # считаем, сколько от МС ехать на автобусе до обозначенного терминала прилёта/вылета
+        flight_data['Bus_Time'] = flight_data.apply(
+            lambda x: x[str(x['flight_terminal_#'])], 
+            axis=1
+            )
+
+        # считаем, сколько надо автобусов, чтобы перевезти пассажиров
+        flight_data['num_needed_Buses'] = (
+            flight_data['flight_PAX'] // self.BUS_CAPACITY
+            +
+            (flight_data['flight_PAX'] % self.BUS_CAPACITY > 0)
+        )
+
+        # определяем, содержит ли выбранное для ВС МС телетрап
+        flight_data['is_JetBridge'] = (
+            (flight_data['JetBridge_on_Arrival'] != 'N')
+            |
+            (flight_data['JetBridge_on_Departure'] != 'N')
+        )
+            
+        # соответствует ли терминал МС с телетрапом терминалу рейса
+        flight_data['is_correct_JetBridge_Terminal'] = np.nan
+        flight_data.loc[flight_data['is_JetBridge'], 'is_correct_JetBridge_Terminal'] = (
+            flight_data.loc[flight_data['is_JetBridge'], 'Terminal']
+            ==
+            flight_data.loc[flight_data['is_JetBridge'], 'flight_terminal_#']
+        )
+
+        # соответствует ли тип JetBridge типу flight_ID (Внутренний/Международный рейс)
+        flight_data['is_correct_JetBridge'] = np.nan
+        arrival_jetbridge_cond = (flight_data['flight_AD'] == 'A') & flight_data['is_JetBridge']
+        departure_jetbridge_cond = (flight_data['flight_AD'] == 'D') & flight_data['is_JetBridge']
+
+        flight_data.loc[arrival_jetbridge_cond, 'is_correct_JetBridge'] = (
+            flight_data.loc[arrival_jetbridge_cond, 'flight_ID']
+            ==
+            flight_data.loc[arrival_jetbridge_cond, 'JetBridge_on_Arrival']
+        )
+            
+        flight_data.loc[departure_jetbridge_cond, 'is_correct_JetBridge'] = (
+            flight_data.loc[departure_jetbridge_cond, 'flight_ID']
+            ==
+            flight_data.loc[departure_jetbridge_cond, 'JetBridge_on_Departure']
+        )
+
+        # считаем время обслуживания ВС на МС
+        flight_data['Handling_Time'] = flight_data['Away_Handling_Time']
+        # условие, что ВС стоит на МС с телетрапом у терминала, соответствующего терминалу прилета
+        # и тип телетрапа соответствует типу рейса
+        # в противном случае обслуживание осуществляется с помощью автобуса
+        jet_bridge_can_be_used = (
+            flight_data['is_JetBridge']
+            &
+            flight_data['is_correct_JetBridge_Terminal']
+            &
+            flight_data['is_correct_JetBridge']
+        )
+        flight_data.loc[jet_bridge_can_be_used, 'Handling_Time'] = \
+            flight_data.loc[jet_bridge_can_be_used, 'JetBridge_Handling_Time']
+
+        flight_data['JetBridge_can_be_used'] = jet_bridge_can_be_used
+
+        # определяем время прибыия ВС на МС и время убытия
+        arrival_cond = flight_data['flight_AD'] ==  'A'
+        departure_cond = flight_data['flight_AD'] ==  'D'
+
+        flight_data['start_parking'] = flight_data['flight_datetime']
+        flight_data['end_parking'] = flight_data['flight_datetime']
+
+        taxiing_time = pd.to_timedelta(flight_data['Taxiing_Time'], unit='minutes')
+        
+        if not taxiing_affect_parking:
+            taxiing_time = pd.to_timedelta(
+                pd.Series(
+                [0 for i in range(flight_data.shape[0])]
+                ),
+                unit='minutes'
+            )
+            
+        handling_time = pd.to_timedelta(flight_data['Handling_Time'], unit='minutes')
+
+        flight_data.loc[arrival_cond, 'start_parking'] += taxiing_time[arrival_cond]
+        flight_data.loc[arrival_cond, 'end_parking'] = flight_data.loc[arrival_cond, 'start_parking'] + handling_time[arrival_cond]
+
+        flight_data.loc[departure_cond, 'end_parking'] -= taxiing_time[departure_cond]
+        flight_data.loc[departure_cond, 'start_parking'] = flight_data.loc[departure_cond, 'end_parking'] - handling_time[departure_cond]
+
+        # определяем, не пересекаются ли ВС на МС по времени
+        parking_deltas_df = \
+            flight_data[['Aircraft_Stand', 'start_parking', 'end_parking']]\
+                .copy().\
+                    reset_index().\
+                        sort_values(by='start_parking')
+        parking_deltas_df = parking_deltas_df.groupby('Aircraft_Stand').agg(list).reset_index()
+
+        parking_deltas_df['parking_deltas'] = parking_deltas_df.\
+            apply(self.get_parking_deltas, axis=1)
+
+        parking_deltas_df['is_parking_conflict'] = parking_deltas_df['parking_deltas'].apply(
+            lambda x: any([True for delta in x if delta < self.MIN_PARKING_DELTA])
+        )
+
+        # получаем индексы всех конфликтующих стоянок
+        parking_deltas_df['conflict_index'] = parking_deltas_df.apply(
+            lambda x: sorted(
+                set(
+                    np.array(
+                        [[x['index'][i], x['index'][i+1]] for i, delta in enumerate(x['parking_deltas']) if delta < self.MIN_PARKING_DELTA]
+                        ).flatten(),
+                )
+            ),
+            axis=1
+        )
+
+        # для всех рейсов, вовлеченных в конфликт, ставим соответствующий флаг
+        parking_conflicts = parking_deltas_df[['is_parking_conflict', 'conflict_index']].\
+            explode(column='conflict_index').dropna()
+        parking_conflicts = parking_conflicts.set_index('conflict_index')
+        parking_conflicts.index.name = None
+
+        flight_data = flight_data.join(parking_conflicts)
+        flight_data.loc[flight_data['is_parking_conflict'].isna(), 'is_parking_conflict'] = False
+
+
+        # кейс на соседних МС с телетрапом стоят Wide_body
+        wide_body_stands_cols = ['Aircraft_Stand', 'start_parking', 'end_parking']
+
+        wide_body_stands = flight_data.loc[
+            flight_data['is_JetBridge'] & (flight_data['Aircraft_Class'] == 'Wide_Body'), 
+            wide_body_stands_cols
+            ].sort_values(by=['Aircraft_Stand', 'start_parking']).reset_index()
+
+        wide_body_stands['start_parking'] = wide_body_stands.apply(lambda x: [x['start_parking'], x['index']], axis=1)
+        wide_body_stands['end_parking'] = wide_body_stands.apply(lambda x: [x['end_parking'], x['index']], axis=1)
+
+        wide_body_stands = wide_body_stands.groupby('Aircraft_Stand').agg(list).reset_index()
+
+        wide_body_stands['to_next_stand_distance'] = abs(wide_body_stands['Aircraft_Stand'].diff(-1))
+
+        stands = wide_body_stands['Aircraft_Stand'].values
+        to_next_distance = wide_body_stands['to_next_stand_distance'].values
+
+        adjacent_stands = [[st, st+1] for st, dist in zip(stands, to_next_distance) if dist == 1]
+
+        wide_body_stands['parking_points'] = wide_body_stands['start_parking'] + wide_body_stands['end_parking']
+        wide_body_stands['parking_points'] = wide_body_stands['parking_points'].apply(sorted)
+        wide_body_stands['parking_points'] = wide_body_stands.apply(
+            lambda x: [point + [x['Aircraft_Stand']] for point in x['parking_points']],
+            axis=1
+            )
+
+        stand_parking_map = wide_body_stands[['Aircraft_Stand', 'parking_points']].\
+            set_index('Aircraft_Stand').to_dict()['parking_points']
+        parking_intervals = [sorted(stand_parking_map[s[0]]+stand_parking_map[s[1]]) for s in adjacent_stands]
+        problems_list = []
+        index_list = []
+        for adjacent in parking_intervals:
+            for i in range(0, len(adjacent), 2):
+                problems_list.append(adjacent[i][1] != adjacent[i+1][1])
+                index_list.append([adjacent[i][1], adjacent[i+1][1]])
+
+        wide_body_intersect = pd.DataFrame()
+        wide_body_intersect['is_wide_body_intersect'] = problems_list
+        wide_body_intersect['flight_index'] = index_list
+        wide_body_intersect = wide_body_intersect.explode(column='flight_index')
+        wide_body_intersect = wide_body_intersect.groupby('flight_index').agg(list)
+        wide_body_intersect['is_wide_body_intersect'] = wide_body_intersect['is_wide_body_intersect'].apply(any)
+        wide_body_intersect.index.name = None
+
+        flight_data = flight_data.join(wide_body_intersect)
+
+        # расчёт целевых переменных
+        # Стоимость руления по аэродрому
+        flight_data['Taxiing_cost'] = flight_data['Taxiing_Time']*handling_rates_dict['Aircraft_Taxiing_Cost_per_Minute']
+
+        # Стоимость места стоянки
+        flight_data['Parking_usage_cost'] = handling_rates_dict['Away_Aircraft_Stand_Cost_per_Minute']
+        flight_data.loc[flight_data['is_JetBridge'], 'Parking_usage_cost'] = handling_rates_dict['JetBridge_Aircraft_Stand_Cost_per_Minute']
+        flight_data['Parking_usage_cost'] = flight_data['Parking_usage_cost'] * flight_data['Handling_Time']
+
+        # Стоимость использования перронных автобусов для посадки/высадки пассажиров
+        flight_data['Bus_usage_cost'] = flight_data['Bus_Time'] * flight_data['num_needed_Buses'] * handling_rates_dict['Bus_Cost_per_Minute']
+        flight_data['Total_cost_Bus'] = flight_data['Taxiing_cost']	+ \
+            flight_data['Parking_usage_cost'] + \
+                flight_data['Bus_usage_cost']
+
+        flight_data['Total_cost_Jetbridge_(if_possibe)'] = flight_data['Taxiing_cost']	+ \
+            flight_data['Parking_usage_cost'] + \
+                flight_data['Bus_usage_cost'] * ~flight_data['JetBridge_can_be_used']
+
+        flight_data['is_wide_body_intersect'] = flight_data['is_wide_body_intersect'].fillna(False)
+        self.flight_data = flight_data
+        return flight_data
+
+
+    def __update_problem_index(self, problem_index):
+        if self.problem_flights is None:
+            self.problem_flights = problem_index
+        else:
+            self.problem_flights += problem_index
+            self.problem_flights = sorted(
+                set(self.problem_flights)
+            )
+
+
+    def check_parking_conflicts(self):
+        if self.flight_data is None:
+            print('Нет данных для анализа. Запустите метод calculate_all_data')
+            return False
+        
+        sum_conflicts = self.flight_data['is_parking_conflict'].sum()
+        problem_index = list(self.flight_data[self.flight_data['is_parking_conflict']].index)
+        
+        if sum_conflicts > 0:
+            print('Обнаружены конфликты МС по времени стоянки ВС! Индексы рейсов:')
+            print(list(problem_index))
+            self.__update_problem_index(problem_index)
+            return False
+        
+        return True
+
+
+    def check_wide_body_conflicts(self):
+        if self.flight_data is None:
+            print('Нет данных для анализа. Запустите метод calculate_all_data')
+            return False
+        
+        sum_conflicts = self.flight_data['is_wide_body_intersect'].sum()
+        problem_index = list(self.flight_data[self.flight_data['is_wide_body_intersect']].index)
+        
+        if sum_conflicts > 0:
+            print('Обнаружены Wide_body ВС на соседних МС с телетрапами! Индексы рейсов:')
+            print(list(problem_index))
+            self.__update_problem_index(problem_index)
+            return False
+        
+        return True
+
+    
+    def check_jetbridge(self):
+        if self.flight_data is None:
+            print('Нет данных для анализа. Запустите метод calculate_all_data')
+            return False
+        
+        condition = self.flight_data['is_JetBridge'] & ~self.flight_data['JetBridge_can_be_used']
+        sum_conflicts = condition.sum()
+        problem_index = list(self.flight_data[condition].index)
+        
+        if sum_conflicts > 0:
+            print('Обнаружены ВС на МС с телетрапами, которые нельзя использовать! Индексы рейсов:')
+            print(list(problem_index))
+            self.__update_problem_index(problem_index)
+            return False
+        
+        return True
+
+    def check_target_cost(self):
+        pass
+
+    def solution_fullcheck(self):
+        check_parking = self.check_parking_conflicts()
+        check_widebody = self.check_wide_body_conflicts()
+        check_jetbridge = self.check_jetbridge()
+        if not all([check_parking, check_widebody, check_jetbridge]):
+            print('Solution fullcheck failed!')
+            return False
+        return True
+
 
 class OptimizeDay:
     def __init__(self, data: Data):
