@@ -548,6 +548,7 @@ class OptimizationSolution():
         if not all([check_parking, check_widebody, check_jetbridge]):
             print('Solution fullcheck failed!')
             return False
+        return True
 
 
 class OptimizeDay:
