@@ -100,6 +100,7 @@ class OptimizationSolution():
     def __init__(self, data_folder: str='../data', solution_path=None):
         self.data_folder = data_folder
         self.solution_path = solution_path
+        self.solution_df = None
         self.flight_data = None
         self.aircraft_classes_df = None
         self.timetable_df = None
@@ -109,7 +110,7 @@ class OptimizationSolution():
         self.problem_flights = None
         self.RANDOM_STATE = 33
         self.BUS_CAPACITY = 80
-        self.MIN_PARKING_DELTA = pd.Timedelta('5 minutes')
+        self.MIN_PARKING_DELTA = pd.Timedelta('0 minutes')
 
     
     def load_all_data(self):
@@ -207,8 +208,11 @@ class OptimizationSolution():
     def get_solution_file(self):
         if self.solution_path is None:
             print('Путь к файлу с решением не передан. Будет сгенерировано фейковое решение.')
-            return self.create_fake_solution(self.timetable_df, self.aircraft_stands_df)
-        return pd.read_csv(self.solution_path)
+            self.solution_df = self.create_fake_solution(self.timetable_df, self.aircraft_stands_df)
+            return self.solution_df
+
+        self.solution_df = pd.read_csv(self.solution_path)
+        return self.solution_df
 
 
     def calculate_all_data(self, solution_df=None, taxiing_affect_parking=True):
@@ -276,10 +280,11 @@ class OptimizationSolution():
 
         flight_data = self.timetable_df.copy()
         flight_data['Aircraft_Class'] = aircraft_class
-        flight_data['Aircraft_Stand'] = prepared_solution['Aircraft_Stand']
-        flight_data['solution_index'] = prepared_solution['solution_index']
-        flight_data = flight_data.merge(self.aircraft_stands_df, on='Aircraft_Stand')
-        flight_data = flight_data.merge(self.handling_time_df, on='Aircraft_Class')
+        flight_data = flight_data.drop(columns='Aircraft_Stand')
+        flight_data = flight_data.join(prepared_solution['Aircraft_Stand'], how='left')
+        flight_data = flight_data.join(prepared_solution['solution_index'], how='left')
+        flight_data = flight_data.merge(self.aircraft_stands_df, on='Aircraft_Stand', how='left')
+        flight_data = flight_data.merge(self.handling_time_df, on='Aircraft_Class', how='left')
         flight_data['flight_datetime'] = pd.to_datetime(flight_data['flight_datetime'])
 
         # считаем, сколько от МС ехать на автобусе до обозначенного терминала прилёта/вылета
@@ -402,7 +407,7 @@ class OptimizationSolution():
         parking_conflicts = parking_conflicts.set_index('conflict_index')
         parking_conflicts.index.name = None
 
-        flight_data = flight_data.join(parking_conflicts)
+        flight_data = flight_data.join(parking_conflicts, how='left')
         flight_data.loc[flight_data['is_parking_conflict'].isna(), 'is_parking_conflict'] = False
 
 
@@ -451,7 +456,7 @@ class OptimizationSolution():
         wide_body_intersect['is_wide_body_intersect'] = wide_body_intersect['is_wide_body_intersect'].apply(any)
         wide_body_intersect.index.name = None
 
-        flight_data = flight_data.join(wide_body_intersect)
+        flight_data = flight_data.join(wide_body_intersect, how='left')
 
         # расчёт целевых переменных
         # Стоимость руления по аэродрому
@@ -538,6 +543,24 @@ class OptimizationSolution():
         
         return True
 
+    
+    def check_all_flights_placed(self):
+        if self.flight_data is None:
+            print('Нет данных для анализа. Запустите метод calculate_all_data')
+            return False
+        
+        sum_conflicts = self.flight_data['Aircraft_Stand'].isna().sum()
+        problem_index = list(self.flight_data[self.flight_data['Aircraft_Stand'].isna()].index)
+        
+        if sum_conflicts > 0:
+            print('Обнаружены рейсы без МС! Индексы рейсов:')
+            print(list(problem_index))
+            self.__update_problem_index(problem_index)
+            return False
+        
+        return True
+
+
     def check_target_cost(self):
         pass
 
@@ -545,7 +568,8 @@ class OptimizationSolution():
         check_parking = self.check_parking_conflicts()
         check_widebody = self.check_wide_body_conflicts()
         check_jetbridge = self.check_jetbridge()
-        if not all([check_parking, check_widebody, check_jetbridge]):
+        check_flights_placed = self.check_all_flights_placed()
+        if not all([check_parking, check_widebody, check_jetbridge, check_flights_placed]):
             print('Solution fullcheck failed!')
             return False
         return True
