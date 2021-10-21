@@ -1,18 +1,19 @@
 import os
 import random
-import time
 from datetime import datetime, timedelta
-from itertools import product
 
-import cloudpickle
 import numpy as np
 import pandas as pd
 import pyomo.environ as pyo
-from pyomo.core.util import quicksum, sum_product
+from pyomo.core.util import quicksum
 from pyomo.opt import SolverFactory
+
+import src.utils as utils
 
 
 class Data():
+    """ Класс, выкачивающий данные
+    """
     def __init__(self, data_folder: str='../data'):
         self.data_folder = data_folder
         self.aircraft_classes_dict = None
@@ -59,16 +60,17 @@ class Data():
             flights_pd = flights_pd.reset_index(drop=True)
             flights_pd['index'] = flights_pd.index
             flights_pd.drop(['Aircraft_Stand'], axis=1, inplace=True)
-            self.flights_dict  = flights_pd.to_dict()
-        return self.flights_dict 
+            self.flights_dict = flights_pd.to_dict()
+        return self.flights_dict
 
 
 class DataExtended(Data):
-    def __init__(self, data_folder: str='../data', bus_capacity:int = 80 ):
+    """ Класс, обогащающий данные
+    """
+    def __init__(self, data_folder: str='../data', bus_capacity: int = 80 ):
         super().__init__(data_folder)
         self.bus_capacity = bus_capacity
         
-
     def __find_aircraft_class(self, flights_data):
         aircraft_class_dict = dict()
         aircraft_classes_data = self.get_aircraft_classes()
@@ -79,11 +81,9 @@ class DataExtended(Data):
                     break
         return aircraft_class_dict
 
-
-
     def get_flights(self):
         flights = super().get_flights()
-        flights['flight_datetime'] = {i:j for (i,j) in enumerate(list(map(lambda x: datetime.strptime(x, '%Y-%m-%d %H:%M:%S'), list(flights['flight_datetime'].values()))))}
+        flights['flight_datetime'] = {i: j for (i, j) in enumerate(list(map(lambda x: datetime.strptime(x, '%Y-%m-%d %H:%M:%S'), list(flights['flight_datetime'].values()))))}
         flights['quantity_busses'] = {key: np.ceil(flights['flight_PAX'][key] / self.bus_capacity) for key in flights['flight_PAX'].keys()}
         flights['aircraft_class'] = self.__find_aircraft_class(flights)
         return flights
@@ -95,10 +95,9 @@ class DataExtended(Data):
 
 
 
-
-
 class OptimizationSolution():
-
+    """ Класс, проверяющий решение
+    """
 
     def __init__(self, data_folder: str='../data', solution_path=None):
         self.data_folder = data_folder
@@ -574,225 +573,219 @@ class OptimizationSolution():
 
 
 class OptimizeDay:
-    def __init__(self, config: str):
+    """ Оптимизация
+    """
+    def __init__(self, config: dict):
+        self.config = config
         self.model = None
-        self.data = data
-        self.FLIGHTS_DATA = data.get_flights()
-        self.AIRCRAFT_STANDS_DATA = data.get_aircraft_stands()
-        self.HANDLING_RATES_DATA = data.get_handling_rates()
-        self.AIRCRAFT_CLASSES_DATA = data.get_aircraft_classes()
-        self.HANGLING_TIME = data.get_handling_time()
-
-        self.FLIGHTS = None
-        self.AIRCRAFT_STANDS = None
-        self.TIMES = None
-
+        self.data = DataExtended(config['data_folder_path'], config['task_config']['bus_capacity'])
         self.opt = None
 
-    def set_solver(self):
-        self.opt = SolverFactory('cbc', executable="/usr/local/bin/cbc")
-        self.opt.options['ratioGap'] = 0.0001
-        self.opt.options['sec'] = 7200
-
+    def __set_solver(self):
+        """ Настройка солвера
+        """
+        self.opt = SolverFactory(self.config['solver']['solver_name'], executable=self.config['solver']['solver_path'])
+        self.opt.options = self.config['solver_config']
 
     def __get_times(self, start_dt, end_dt):
+        """Генерация листа временных интервалов, для которых будет проведена оптимизация
+
+        Args:
+            start_dt (datetime): Начало первого временного интервала
+            end_dt (datetime): Конец последнего временного интервала
+
+        Returns:
+            list: список начал временных интервалов
+        """
         result_5minutes_list = []
         current_dt = start_dt
-        end_dt_with_add_time = end_dt + timedelta(minutes = max(self.AIRCRAFT_STANDS_DATA['Taxiing_Time'].values())) + timedelta(minutes = 10)
+        end_dt_with_add_time = end_dt + timedelta(minutes=max(self.model.AIRCRAFT_STANDS_DATA['Taxiing_Time'].values())) + timedelta(minutes=10)
         while current_dt < end_dt_with_add_time:
             result_5minutes_list.append(current_dt)
-            current_dt = current_dt + timedelta(minutes = 5)
+            current_dt = current_dt + timedelta(minutes=5)
         return result_5minutes_list
 
-    # Cтоимость руления по аэродрому
-    def airport_taxing_cost_func(self, model, flight):
+    @staticmethod
+    def __airport_taxing_cost_func(model, flight):
+        """Cтоимость руления по аэродрому
+
+        Args:
+            model pyomo model: Модель оптимизации
+            flight (str): id рейса
+        """
         # Стоимость руления определяется как время руления (однозначно определяется МС ВС) умноженное на тариф за минуту руления
         # TODO учесть, что некорректно может считаться из-замножественного time
-        return quicksum([self.model.AS_occupied[flight, stand] *
-                    self.AIRCRAFT_STANDS_DATA['Taxiing_Time'][stand] *
-                    self.HANDLING_RATES_DATA['Aircraft_Taxiing_Cost_per_Minute']
-                    for stand in self.AIRCRAFT_STANDS])
+        return quicksum([model.AS_occupied[flight, stand] *
+                         model.AIRCRAFT_STANDS_DATA['Taxiing_Time'][stand] *
+                         model.HANDLING_RATES_DATA['Aircraft_Taxiing_Cost_per_Minute']
+                         for stand in model.AIRCRAFT_STANDS])
     
 
-    def teletrap_can_be_used(self, flight, stand):
-        """ Телетрап на данном МС доступен только в случае, если:
-        1)терминал рейса соответствует терминалу МC
-        2)значение поля flight_ID рейса (метка МВЛ/ВВЛ – Domestic/Intern£tion£l) совпадает с соответствующей меткой поля JetBridge_on_Arriv£l (для прилетающих рейсов) или JetBridge_on_Dep£rture (для вылетающих рейсов) МС
+    @staticmethod
+    def __busses_cost_func(model, flight):
+        """Стоимость использования автобусов
+
+        Args:
+            model pyomo model
+            flight str: рейс
         """
-        # TODO что делать если терминал пропущен
-        # TODO проверить На МС с телетрапами существует дополнительное ограничение по расстановке ВС: на соседних МС (т.е. тех МС, у которых номер отличается на 1) не могут находиться одновременно два широкофюзеляжных ВС (ВС класса “Wide_Body”)
-        cond1 = self.FLIGHTS_DATA['flight_terminal_#'][flight] == self.AIRCRAFT_STANDS_DATA['Terminal'][stand]
-        cond2 = ((self.FLIGHTS_DATA['flight_ID'][flight] == self.AIRCRAFT_STANDS_DATA['JetBridge_on_Arrival'][stand])\
-                 and (self.FLIGHTS_DATA['flight_AD'][flight] == 'A'))\
-                 or\
-                ((self.FLIGHTS_DATA['flight_ID'][flight] == self.AIRCRAFT_STANDS_DATA['JetBridge_on_Departure'][stand]) and\
-                (self.FLIGHTS_DATA['flight_AD'][flight] == 'D'))
-
-        return cond1 and cond2
-
-    def busses_cost_func(self, model, flight):
         # При использовании удалённых МС ВС для посадки/высадки пассажиров необходимо использовать перронные автобусы. Вместимость одного перронного автобуса 80 пассажиров. Время движения автобуса от терминала и стоимость минуты использования автобуса указаны в соответствующих таблицах.
-        return quicksum([self.model.AS_occupied[flight, stand] *
-                    self.FLIGHTS_DATA['quantity_busses'][flight] *
-                    self.AIRCRAFT_STANDS_DATA[str(self.FLIGHTS_DATA['flight_terminal_#'][flight])][stand] *
-                    (1 - self.teletrap_can_be_used(flight, stand))
-                    for stand in self.AIRCRAFT_STANDS])
-        
-    def time_calculate_func(self, flight, aircraft_stand, time):
-        flight_time = self.FLIGHTS_DATA['flight_datetime'][flight]
-        taxiing_time = int(self.AIRCRAFT_STANDS_DATA['Taxiing_Time'][aircraft_stand])
-        arrival_or_depature = self.FLIGHTS_DATA['flight_AD'][flight]
-        use_trap_flg = self.teletrap_can_be_used(flight, aircraft_stand)
+        return quicksum([model.AS_occupied[flight, stand] *
+                         model.FLIGHTS_DATA['quantity_busses'][flight] *
+                         model.AIRCRAFT_STANDS_DATA[str(model.FLIGHTS_DATA['flight_terminal_#'][flight])][stand] *
+                         model.HANDLING_RATES_DATA['Bus_Cost_per_Minute'] *
+                         (1 - utils.teletrap_can_be_used(flight, stand, model.FLIGHTS_DATA, model.AIRCRAFT_STANDS_DATA))
+                         for stand in model.AIRCRAFT_STANDS])
+    
+    @staticmethod
+    def __AS_using_cost_def(model, flight):
+        """Стоимость использования MC VC
 
-        if use_trap_flg:
-            column_handling_time = 'JetBridge_Handling_Time'
-        else: 
-            column_handling_time = 'Away_Handling_Time'
-        aircraft_class = self.FLIGHTS_DATA['aircraft_class'][flight]
-        handling_time = self.HANGLING_TIME[column_handling_time][aircraft_class]
+        Args:
+            model pyomo.model
+            flight str: рейс
+        """
+        return quicksum([model.AS_occupied[flight, stand] *
+                         model.HANGLING_TIME['JetBridge_Handling_Time'][model.FLIGHTS_DATA['aircraft_class'][stand]] *
+                         model.HANDLING_RATES_DATA['JetBridge_Aircraft_Stand_Cost_per_Minute'] * utils.teletrap_can_be_used_on_stand(stand, model.AIRCRAFT_STANDS_DATA) +
+                         model.AS_occupied[flight, stand] *
+                         model.HANGLING_TIME['Away_Handling_Time'][model.FLIGHTS_DATA['aircraft_class'][stand]] *
+                         model.HANDLING_RATES_DATA['Away_Aircraft_Stand_Cost_per_Minute'] * (1 - utils.teletrap_can_be_used_on_stand(stand, model.AIRCRAFT_STANDS_DATA))
+                         for stand in model.AIRCRAFT_STANDS])
+    
+    @staticmethod
+    def __only_one_flight_per_place_func(model, stand, time):
+        """Определяет есть ли более одного рейса на одном месте
 
-        if arrival_or_depature == 'D':
-            if (flight_time - timedelta(minutes=taxiing_time) > time) & \
-                (flight_time - timedelta(minutes=handling_time) - timedelta(minutes=taxiing_time) <= time):
-                    result = 1
-            else:
-                result = 0
-        elif arrival_or_depature == 'A':
-            if (flight_time + timedelta(minutes=taxiing_time) <= time) & \
-                (flight_time + timedelta(minutes=handling_time) + timedelta(minutes=taxiing_time) > time):
-                    result = 1
-            else:
-                result = 0
-        else:
-            raise ValueError(f"arrival_or_depature имеет некорректное значение: {arrival_or_depature} , а должно быть A или D")
-        return result
+        Args:
+            model pyomo model
+            stand (str): МС
+            time (str): рейс
+        """
+        return quicksum([utils.time_calculate_func(flight, stand, time, model.FLIGHTS_DATA, model.AIRCRAFT_STANDS_DATA, model.HANGLING_TIME) * model.AS_occupied[flight, stand] for flight in model.FLIGHTS]) <= 1
     
-    def AS_using_cost_def(self, model, flight):
-        # Стоимость использования MC VC
-        return quicksum([self.model.AS_occupied[flight, stand] *
-                    self.HANGLING_TIME['JetBridge_Handling_Time'][self.FLIGHTS_DATA['aircraft_class'][stand]] *
-                    self.HANDLING_RATES_DATA['JetBridge_Aircraft_Stand_Cost_per_Minute'] * self.teletrap_can_be_used_on_stand(stand) +
-                    self.model.AS_occupied[flight, stand] *
-                    self.HANGLING_TIME['Away_Handling_Time'][self.FLIGHTS_DATA['aircraft_class'][stand]] *
-                    self.HANDLING_RATES_DATA['Away_Aircraft_Stand_Cost_per_Minute'] * (1 - self.teletrap_can_be_used_on_stand(stand))
-                    for stand in self.AIRCRAFT_STANDS])
-    
-    def only_one_flight_per_place_func(self, model, stand, time):
-        return quicksum([self.time_calculate_func(flight, stand, time) * model.AS_occupied[flight, stand] for flight in self.FLIGHTS]) <= 1
-    
-    def teletrap_can_be_used_on_stand(self, stand):
-        return self.AIRCRAFT_STANDS_DATA['JetBridge_on_Arrival'][stand] != 'N' or self.AIRCRAFT_STANDS_DATA['JetBridge_on_Departure'][stand] != 'N'
-    
-    def two_wide_near_are_prohibited_left_func(self, model, stand, time):
+    @staticmethod
+    def __two_wide_near_are_prohibited_left_func(model, stand, time):
+        """Проверяем, что слева от широкого самолета не стоит широкий самолет
 
-        if stand - 1 in self.AIRCRAFT_STANDS:
-            if self.AIRCRAFT_STANDS_DATA[stand - 1] == self.AIRCRAFT_STANDS_DATA[stand]:
-                left_stand = quicksum([self.time_calculate_func(flight, stand - 1, time) * model.AS_occupied[flight, stand - 1] for flight in self.FLIGHTS_WIDE])
+        Args:
+            model pyomo.model: 
+            stand str: МС
+            time datetime: временной интервал
+        """
+        if stand - 1 in model.AIRCRAFT_STANDS:
+            if model.AIRCRAFT_STANDS_DATA["Terminal"][stand - 1] == model.AIRCRAFT_STANDS_DATA["Terminal"][stand]:
+                left_stand = quicksum([utils.time_calculate_func(flight, stand - 1, time, model.FLIGHTS_DATA, model.AIRCRAFT_STANDS_DATA, model.HANGLING_TIME) * model.AS_occupied[flight, stand - 1] for flight in model.FLIGHTS_WIDE])
             else:
                 left_stand = 0
         else:
             left_stand = 0
         
-        middle_stand = quicksum([self.time_calculate_func(flight, stand, time) * model.AS_occupied[flight, stand] for flight in self.FLIGHTS_WIDE])
+        middle_stand = quicksum([utils.time_calculate_func(flight, stand, time,  model.FLIGHTS_DATA, model.AIRCRAFT_STANDS_DATA, model.HANGLING_TIME) * model.AS_occupied[flight, stand] for flight in model.FLIGHTS_WIDE])
 
         out = (left_stand + middle_stand) <= 1
+        # pyomo не любит, когда ограничение яляется тривиальным(всегда выполняется) и  требует в таком случае возвращать pyo.Constraint.Feasible
         if isinstance(out, bool):
             return pyo.Constraint.Feasible
         else:
             return out
 
-    def two_wide_near_are_prohibited_right_func(self, model, stand, time):
-    
-        
-        middle_stand = quicksum([self.time_calculate_func(flight, stand, time) * model.AS_occupied[flight, stand] for flight in self.FLIGHTS_WIDE])
+    @staticmethod
+    def __two_wide_near_are_prohibited_right_func(model, stand, time):
+        """Проверяем, что справа от широкого самолета не стоит широкий самолет
 
-        if stand + 1 in self.AIRCRAFT_STANDS:
-            if self.AIRCRAFT_STANDS_DATA[stand + 1] == self.AIRCRAFT_STANDS_DATA[stand]:
-                right_stand = quicksum([self.time_calculate_func(flight, stand + 1, time) * model.AS_occupied[flight, stand + 1] for flight in self.FLIGHTS_WIDE])
+        Args:
+            model pyomo.model: 
+            stand str: МС
+            time datetime: временной интервал
+        """
+        if stand + 1 in model.AIRCRAFT_STANDS:
+            if model.AIRCRAFT_STANDS_DATA["Terminal"][stand + 1] == model.AIRCRAFT_STANDS_DATA["Terminal"][stand]:
+                left_stand = quicksum([utils.time_calculate_func(flight, stand + 1, time, model.FLIGHTS_DATA, model.AIRCRAFT_STANDS_DATA, model.HANGLING_TIME) * model.AS_occupied[flight, stand + 1] for flight in model.FLIGHTS_WIDE])
             else:
-                right_stand = 0
+                left_stand = 0
         else:
-            right_stand = 0
+            left_stand = 0
         
-        out = (middle_stand + right_stand) <= 1
+        middle_stand = quicksum([utils.time_calculate_func(flight, stand, time,  model.FLIGHTS_DATA, model.AIRCRAFT_STANDS_DATA, model.HANGLING_TIME) * model.AS_occupied[flight, stand] for flight in model.FLIGHTS_WIDE])
+
+        out = (left_stand + middle_stand) <= 1
+        # pyomo не любит, когда ограничение яляется тривиальным(всегда выполняется) и  требует в таком случае возвращать pyo.Constraint.Feasible
         if isinstance(out, bool):
             return pyo.Constraint.Feasible
         else:
             return out
-    
-    def every_flight_must_have_its_stand_func(self, model, flight):
-        return quicksum([self.model.AS_occupied[flight, stand] for stand in self.AIRCRAFT_STANDS]) == 1
+
+    @staticmethod
+    def __every_flight_must_have_its_stand_func(model, flight):
+        """Каждый рейс должен иметь место
+
+        Args:
+            model pyomo model:
+            flight (str): рейс
+        """
+        return quicksum([model.AS_occupied[flight, stand] for stand in model.AIRCRAFT_STANDS]) == 1
 
 
-    def make_model(self, start_dt=datetime(2019, 5, 17, 0, 0), end_dt=datetime(2019, 5, 17, 23, 55)):
-        t = time.time()
-        self.set_solver()
+    def run_optimization(self, start_dt=datetime(2019, 5, 17, 0, 0), end_dt=datetime(2019, 5, 17, 23, 55)):
+        """
+
+        Args:
+            start_dt ([type], optional): Начало периода оптимизации. Defaults to datetime(2019, 5, 17, 0, 0).
+            end_dt ([type], optional): Конец периода оптимизации. Defaults to datetime(2019, 5, 17, 23, 55).
+        """
+        self.__set_solver()
 
         self.model = pyo.ConcreteModel()
+
+        # Словари входных параметров
+        self.model.FLIGHTS_DATA = self.data.get_flights()
+        self.model.AIRCRAFT_STANDS_DATA =self.data.get_aircraft_stands()
+        self.model.HANDLING_RATES_DATA = self.data.get_handling_rates()
+        self.model.AIRCRAFT_CLASSES_DATA = self.data.get_aircraft_classes()
+        self.model.HANGLING_TIME = self.data.get_handling_time()
+
         # Рейсы
-        self.FLIGHTS = self.FLIGHTS_DATA['index'].values()
+        self.model.FLIGHTS = self.model.FLIGHTS_DATA['index'].values()
         # Места стоянки
-        self.AIRCRAFT_STANDS = self.AIRCRAFT_STANDS_DATA['index'].values()
+        self.model.AIRCRAFT_STANDS = self.model.AIRCRAFT_STANDS_DATA['index'].values()
         # Временные отрезки
-        self.TIMES = self.__get_times(start_dt=start_dt, end_dt=end_dt)
+        self.model.TIMES = self.__get_times(start_dt=start_dt, end_dt=end_dt)
         # Места стоянки с телетрапом
-        self.AIRCRAFT_STANDS_WITH_TRAPS = [stand for stand in self.AIRCRAFT_STANDS if self.teletrap_can_be_used_on_stand(stand)]
+        self.model.AIRCRAFT_STANDS_WITH_TRAPS = [stand for stand in self.model.AIRCRAFT_STANDS if utils.teletrap_can_be_used_on_stand(stand, self.model.AIRCRAFT_STANDS_DATA)]
+        # Рейсы с широким самолетом
+        self.model.FLIGHTS_WIDE = [flight for flight in self.model.FLIGHTS if self.model.FLIGHTS_DATA['aircraft_class'][flight] == 'Wide_Body']
+    
 
-        self.FLIGHTS_WIDE = [flight for flight in self.FLIGHTS if self.FLIGHTS_DATA['aircraft_class'][flight] == 'Wide_Body']
-
-        new_t = time.time()
-        print(t - new_t, "1")
-        new_t2 = time.time()
-        print(len(self.TIMES))
         # занимаемые места (Рейс * МC) - переменные
-        self.model.AS_occupied = pyo.Var(self.FLIGHTS, self.AIRCRAFT_STANDS, within=pyo.Binary, initialize=0)
+        self.model.AS_occupied = pyo.Var(self.model.FLIGHTS, self.model.AIRCRAFT_STANDS, within=pyo.Binary, initialize=0)
 
-        new_t = time.time()
-        print(new_t - new_t2, "2")
-        new_t2 = time.time()
         # Cтоимость руления по аэродрому
-        self.model.airport_taxing_cost = pyo.Expression(self.FLIGHTS, rule=self.airport_taxing_cost_func)
-        new_t = time.time()
-        print(new_t - new_t2, "3")
-        new_t2 = time.time()
+        self.model.airport_taxing_cost = pyo.Expression(self.model.FLIGHTS, rule=self.__airport_taxing_cost_func)
+
         # Стоимость использования МС ВС
-        self.model.AS_using_cost = pyo.Expression(self.FLIGHTS, rule=self.AS_using_cost_def)
-        new_t = time.time()
-        print(new_t - new_t2, "4")
-        new_t2 = time.time()
+        self.model.AS_using_cost = pyo.Expression(self.model.FLIGHTS, rule=self.__AS_using_cost_def)
+
         # Стоимость использования перронных автобусов для посадки/высадки пассажиров
-        self.model.busses_cost = pyo.Expression(self.FLIGHTS, rule=self.busses_cost_func)
-        new_t = time.time()
-        print(new_t - new_t2, "5")
-        new_t2 = time.time()
+        self.model.busses_cost = pyo.Expression(self.model.FLIGHTS, rule=self.__busses_cost_func)
+
         # Целевая переменная
-        self.model.OBJ = pyo.Objective(expr=quicksum([self.model.airport_taxing_cost[flight] for flight in self.FLIGHTS]) +\
-                                            quicksum([self.model.AS_using_cost[stand] for stand in self.AIRCRAFT_STANDS]) +\
-                                            quicksum([self.model.busses_cost[flight] for flight in self.FLIGHTS]), sense=pyo.minimize)
+        self.model.OBJ = pyo.Objective(expr=quicksum([self.model.airport_taxing_cost[flight] for flight in self.model.FLIGHTS]) +\
+                                            quicksum([self.model.AS_using_cost[stand] for stand in self.model.AIRCRAFT_STANDS]) +\
+                                            quicksum([self.model.busses_cost[flight] for flight in self.model.FLIGHTS]), sense=pyo.minimize)
 
-        new_t = time.time()
-        print(new_t - new_t2, "6")
-        new_t2 = time.time()
-        self.model.only_one_flight_per_place = pyo.Constraint(self.AIRCRAFT_STANDS, self.TIMES, rule=self.only_one_flight_per_place_func)
-    
-        new_t = time.time()
-        print(new_t - new_t2, "7")
-        new_t2 = time.time()
+        print("Начался расчет only_one_flight_per_place") 
+        self.model.only_one_flight_per_place = pyo.Constraint(self.model.AIRCRAFT_STANDS, self.model.TIMES, rule=self.__only_one_flight_per_place_func)
+        print("Закончился расчет only_one_flight_per_place") 
 
-        self.model.two_wide_near_are_prohibited_left = pyo.Constraint(self.AIRCRAFT_STANDS_WITH_TRAPS, self.TIMES, rule=self.two_wide_near_are_prohibited_left_func)
+        self.model.two_wide_near_are_prohibited_left = pyo.Constraint(self.model.AIRCRAFT_STANDS_WITH_TRAPS, self.model.TIMES, rule=self.__two_wide_near_are_prohibited_left_func)
 
-        self.model.two_wide_near_are_prohibited_right = pyo.Constraint(self.AIRCRAFT_STANDS_WITH_TRAPS, self.TIMES, rule=self.two_wide_near_are_prohibited_right_func)
-    
-        new_t = time.time()
-        print(new_t - new_t2, "8")
-        new_t2 = time.time()
+        self.model.two_wide_near_are_prohibited_right = pyo.Constraint(self.model.AIRCRAFT_STANDS_WITH_TRAPS, self.model.TIMES, rule=self.__two_wide_near_are_prohibited_right_func)
 
-        self.model.every_flight_must_have_its_stand = pyo.Constraint(self.FLIGHTS, rule=self.every_flight_must_have_its_stand_func)
+        self.model.every_flight_must_have_its_stand = pyo.Constraint(self.model.FLIGHTS, rule=self.__every_flight_must_have_its_stand_func)
         
-        new_t = time.time()
-        print(new_t - new_t2, "9")
-        new_t2 = time.time()
-        self.opt_output = self.opt.solve(self.model, logfile='SOLVE_LOG', solnfile='SOLNFILE')
+        print("Модель запустилась")
+        self.opt_output = self.opt.solve(self.model, logfile=self.config['solver']['logfile_path'])
         print(self.opt_output)
 
     def get_model(self):
@@ -821,7 +814,7 @@ class OptimizeDay:
         return out_df
         
     def get_solution(self):
-        assert self.model is not None
+        assert self.model is not None, "Перед тем как получить решение нужно рассчитать модель"
         as_ocupied_data = self.__get_model_vars_values(self.model.AS_occupied.extract_values(), 'busy', ['flight', 'stand'])
 
         airport_taxing_cost_data = self.__get_model_expr_values(self.model.airport_taxing_cost.extract_values(), 'airport_taxing_cost_data', ['flight'])
@@ -831,12 +824,3 @@ class OptimizeDay:
         out = as_ocupied_data[as_ocupied_data['busy'] == 1]
         out = out.merge(airport_taxing_cost_data, on='flight').merge(AS_using_cost_data, on='flight').merge(busses_cost_data, on='flight')
         return out
-
-
-if __name__ == "__main__":
-    d = DataExtended()
-    
-    opt = OptimizeDay(d)
-    opt.make_model(datetime(2019, 5, 17, 0, 0), datetime(2019, 5, 18, 0, 0))
-    out_file = opt.get_solution()
-    out_file.to_csv('solution.csv')

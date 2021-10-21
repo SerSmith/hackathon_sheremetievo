@@ -1,0 +1,14 @@
+data_folder_path: 'data'
+output_solution_path: 'solution.csv'
+solver:
+  solver_path: "/usr/local/bin/cbc"
+  solver_name: 'cbc'
+  logfile_path: 'SOLVE_LOG.log'
+solver_config:
+  ratioGap: 0.0001
+  sec: 7200
+task_config:
+ bus_capacity: 80
+ start_date: [2019, 5, 17, 0, 0]
+ end_date: [2019, 5, 18, 0, 0]
+#  end_date: [2019, 5, 17, 0, 5]
