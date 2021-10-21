@@ -586,12 +586,12 @@ class OptimizeDay:
         self.opt.options['ratioGap'] = 0.0001
         self.opt.options['sec'] = 7200
 
-    
-    @staticmethod
-    def __get_times(start_dt, end_dt):
+
+    def __get_times(self, start_dt, end_dt):
         result_5minutes_list = []
         current_dt = start_dt
-        while current_dt<end_dt:
+        end_dt_with_add_time = end_dt + timedelta(minutes = max(self.AIRCRAFT_STANDS_DATA['Taxiing_Time'].values())) + timedelta(minutes = 10)
+        while current_dt < end_dt_with_add_time:
             result_5minutes_list.append(current_dt)
             current_dt = current_dt + timedelta(minutes = 5)
         return result_5minutes_list
