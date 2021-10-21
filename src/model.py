@@ -566,7 +566,7 @@ class OptimizationSolution():
 
 
 class OptimizeDay:
-    def __init__(self, data: Data):
+    def __init__(self, config: str):
         self.model = None
         self.data = data
         self.FLIGHTS_DATA = data.get_flights()
@@ -678,7 +678,10 @@ class OptimizeDay:
     def two_wide_near_are_prohibited_left_func(self, model, stand, time):
 
         if stand - 1 in self.AIRCRAFT_STANDS:
-            left_stand = quicksum([self.time_calculate_func(flight, stand - 1, time) * model.AS_occupied[flight, stand - 1] for flight in self.FLIGHTS_WIDE])
+            if self.AIRCRAFT_STANDS_DATA[stand - 1] == self.AIRCRAFT_STANDS_DATA[stand]:
+                left_stand = quicksum([self.time_calculate_func(flight, stand - 1, time) * model.AS_occupied[flight, stand - 1] for flight in self.FLIGHTS_WIDE])
+            else:
+                left_stand = 0
         else:
             left_stand = 0
         
@@ -696,7 +699,10 @@ class OptimizeDay:
         middle_stand = quicksum([self.time_calculate_func(flight, stand, time) * model.AS_occupied[flight, stand] for flight in self.FLIGHTS_WIDE])
 
         if stand + 1 in self.AIRCRAFT_STANDS:
-            right_stand = quicksum([self.time_calculate_func(flight, stand + 1, time) * model.AS_occupied[flight, stand + 1] for flight in self.FLIGHTS_WIDE])
+            if self.AIRCRAFT_STANDS_DATA[stand + 1] == self.AIRCRAFT_STANDS_DATA[stand]:
+                right_stand = quicksum([self.time_calculate_func(flight, stand + 1, time) * model.AS_occupied[flight, stand + 1] for flight in self.FLIGHTS_WIDE])
+            else:
+                right_stand = 0
         else:
             right_stand = 0
         
