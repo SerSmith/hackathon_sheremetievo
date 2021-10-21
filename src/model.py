@@ -405,7 +405,7 @@ class OptimizationSolution():
         wide_body_stands_cols = ['Aircraft_Stand', 'start_parking', 'end_parking']
 
         wide_body_stands = flight_data.loc[
-            flight_data['is_JetBridge'] & (flight_data['Aircraft_Class'] == 'Wide_Body'), 
+            flight_data['is_JetBridge'] & (flight_data['Aircraft_Class'] == 'Wide_Body'),
             wide_body_stands_cols
             ].sort_values(by=['Aircraft_Stand', 'start_parking']).reset_index()
 
@@ -413,13 +413,21 @@ class OptimizationSolution():
         wide_body_stands['end_parking'] = wide_body_stands.apply(lambda x: [x['end_parking'], x['index']], axis=1)
 
         wide_body_stands = wide_body_stands.groupby('Aircraft_Stand').agg(list).reset_index()
+        wide_body_stands = wide_body_stands.\
+            merge(self.aircraft_stands_df[['Aircraft_Stand', 'Terminal']], on='Aircraft_Stand', how='left')
 
         wide_body_stands['to_next_stand_distance'] = abs(wide_body_stands['Aircraft_Stand'].diff(-1))
+        wide_body_stands['next_terminal_is_different'] = abs(wide_body_stands['Terminal'].diff(-1).fillna(0)).astype(bool)
 
         stands = wide_body_stands['Aircraft_Stand'].values
         to_next_distance = wide_body_stands['to_next_stand_distance'].values
+        next_terminal_is_different = wide_body_stands['next_terminal_is_different'].values
 
-        adjacent_stands = [[st, st+1] for st, dist in zip(stands, to_next_distance) if dist == 1]
+        adjacent_stands = [
+            [st, st+1]
+            for st, dist, diff_term
+            in zip(stands, to_next_distance, next_terminal_is_different)
+            if (dist == 1) and (not diff_term)]
 
         wide_body_stands['parking_points'] = wide_body_stands['start_parking'] + wide_body_stands['end_parking']
         wide_body_stands['parking_points'] = wide_body_stands['parking_points'].apply(sorted)
