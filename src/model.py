@@ -1,14 +1,16 @@
-import pyomo.environ as pyo
-from pyomo.opt import SolverFactory
-import pandas as pd
-import os 
-from  itertools import product
-from datetime import datetime, timedelta
-import numpy as np
-import cloudpickle
-import time
-from pyomo.core.util import quicksum, sum_product
+import os
 import random
+import time
+from datetime import datetime, timedelta
+from itertools import product
+
+import cloudpickle
+import numpy as np
+import pandas as pd
+import pyomo.environ as pyo
+from pyomo.core.util import quicksum, sum_product
+from pyomo.opt import SolverFactory
+
 
 class Data():
     def __init__(self, data_folder: str='../data'):
@@ -145,11 +147,9 @@ class OptimizationSolution():
 
     def create_fake_solution(self, timetable_df, aircraft_stands_df):
         """Создаёт датафрейм с фековым решением
-
         Args:
             timetable_df (pd.DataFrame): pd.read_csv(Timetable_Public.csv)
             aircraft_stands (pd.DataFrame): pd.read_csv(Aircraft_Stands_Public.csv)
-
         Returns:
             pd.DataFrame: датафрейм с фейковым решением
             фичи: 'Unnamed: 0', 'busy', 'flight', 'stand'
@@ -178,10 +178,8 @@ class OptimizationSolution():
     
     def prepare_solution(self, solution_df):
         """Извлекает из датайфрема с решением номера занятых МС и индексы рейсов
-
         Args:
             solution_df ([type]): [description]
-
         Returns:
             [type]: [description]
         """
@@ -219,12 +217,10 @@ class OptimizationSolution():
     def calculate_all_data(self, solution_df=None, taxiing_affect_parking=True):
         """Собирает все таблицы в общий датафрейм и считает фичи
         необходимые для анализа решения
-
         Args:
             solution_df (pd.DataFrame, optional): решение оптимизатора
             taxiing_affect_parking (bool, optional, default True) 
             учитывать время рулежки при расчете времени начала/окончания парковки
-
         Returns:
             pd.DataFrame: датафрейм  с фичами из входных данных и рассчитанными фичами:
             
@@ -253,22 +249,15 @@ class OptimizationSolution():
             Handling_Time - время обслуживания (нахождения) ВС на данном МС
             Если МС с телетрапом и его нельзя использовать (JetBridge_can_be_used=False) берётся всремя обслуживания автобусом
             (Away_Handling_Time)
-
             Taxiing_cost - стоимость руления ВС до данного МС
-
             Parking_usage_cost - стоимость за использование МС
             (даже если телетрап не используется, берется стоимость как за место с телетрапом)
-
             Bus_usage_cost - стоимость автобусов для данного МС
-
             Total_cost_Bus -  общая стоимость услуг для данного МС при условии использования автобусов
             (рассчитывается и для мест с телетрапом тоже)
-
             Total_cost_Jetbridge_(if_possibe) - общая стоимость услуг при условии использования телетрапа
             (если выполняются все условия для этого (JetBridge_can_be_used))
             если нет возможности использования телетрапа, то Total_cost_Jetbridge_(if_possibe) = Total_cost_Bus
-
-
         """
         self.load_all_data()
         aircraft_class = self.determine_aircraft_classes()
@@ -602,21 +591,21 @@ class OptimizeDay:
 
     def set_solver(self):
         self.opt = SolverFactory('cbc', executable="/usr/local/bin/cbc")
-        self.opt.options['ratioGap'] = 0.0000001
-        self.opt.options['sec'] = 40000
+        self.opt.options['ratioGap'] = 0.0001
+        self.opt.options['sec'] = 7200
 
-    
-    @staticmethod
-    def __get_times(start_dt, end_dt):
+
+    def __get_times(self, start_dt, end_dt):
         result_5minutes_list = []
         current_dt = start_dt
-        while current_dt<end_dt:
+        end_dt_with_add_time = end_dt + timedelta(minutes = max(self.AIRCRAFT_STANDS_DATA['Taxiing_Time'].values())) + timedelta(minutes = 10)
+        while current_dt < end_dt_with_add_time:
             result_5minutes_list.append(current_dt)
             current_dt = current_dt + timedelta(minutes = 5)
         return result_5minutes_list
 
     # Cтоимость руления по аэродрому
-    def airport_taxiing_cost_func(self, model, flight):
+    def airport_taxing_cost_func(self, model, flight):
         # Стоимость руления определяется как время руления (однозначно определяется МС ВС) умноженное на тариф за минуту руления
         # TODO учесть, что некорректно может считаться из-замножественного time
         return quicksum([self.model.AS_occupied[flight, stand] *
@@ -664,12 +653,12 @@ class OptimizeDay:
 
         if arrival_or_depature == 'D':
             if (flight_time - timedelta(minutes=taxiing_time) > time) & \
-                (flight_time - timedelta(minutes=handling_time) - timedelta(minutes=taxiing_time) < time):
+                (flight_time - timedelta(minutes=handling_time) - timedelta(minutes=taxiing_time) <= time):
                     result = 1
             else:
                 result = 0
         elif arrival_or_depature == 'A':
-            if (flight_time + timedelta(minutes=taxiing_time) < time) & \
+            if (flight_time + timedelta(minutes=taxiing_time) <= time) & \
                 (flight_time + timedelta(minutes=handling_time) + timedelta(minutes=taxiing_time) > time):
                     result = 1
             else:
@@ -682,19 +671,19 @@ class OptimizeDay:
         # Стоимость использования MC VC
         return quicksum([self.model.AS_occupied[flight, stand] *
                     self.HANGLING_TIME['JetBridge_Handling_Time'][self.FLIGHTS_DATA['aircraft_class'][stand]] *
-                    self.HANDLING_RATES_DATA['JetBridge_Aircraft_Stand_Cost_per_Minute'] * self.teletrap_can_be_used(flight, stand) +
+                    self.HANDLING_RATES_DATA['JetBridge_Aircraft_Stand_Cost_per_Minute'] * self.teletrap_can_be_used_on_stand(stand) +
                     self.model.AS_occupied[flight, stand] *
                     self.HANGLING_TIME['Away_Handling_Time'][self.FLIGHTS_DATA['aircraft_class'][stand]] *
-                    self.HANDLING_RATES_DATA['Away_Aircraft_Stand_Cost_per_Minute'] * self.teletrap_can_be_used(flight, stand)
+                    self.HANDLING_RATES_DATA['Away_Aircraft_Stand_Cost_per_Minute'] * (1 - self.teletrap_can_be_used_on_stand(stand))
                     for stand in self.AIRCRAFT_STANDS])
     
     def only_one_flight_per_place_func(self, model, stand, time):
         return quicksum([self.time_calculate_func(flight, stand, time) * model.AS_occupied[flight, stand] for flight in self.FLIGHTS]) <= 1
     
     def teletrap_can_be_used_on_stand(self, stand):
-        return self.AIRCRAFT_STANDS_DATA['JetBridge_on_Arrival'][stand] != 'N' and self.AIRCRAFT_STANDS_DATA['JetBridge_on_Departure'][stand] != 'N'
+        return self.AIRCRAFT_STANDS_DATA['JetBridge_on_Arrival'][stand] != 'N' or self.AIRCRAFT_STANDS_DATA['JetBridge_on_Departure'][stand] != 'N'
     
-    def two_wide_near_are_prohibited_func(self, model, stand, time):
+    def two_wide_near_are_prohibited_left_func(self, model, stand, time):
 
         if stand - 1 in self.AIRCRAFT_STANDS:
             left_stand = quicksum([self.time_calculate_func(flight, stand - 1, time) * model.AS_occupied[flight, stand - 1] for flight in self.FLIGHTS_WIDE])
@@ -703,12 +692,23 @@ class OptimizeDay:
         
         middle_stand = quicksum([self.time_calculate_func(flight, stand, time) * model.AS_occupied[flight, stand] for flight in self.FLIGHTS_WIDE])
 
+        out = (left_stand + middle_stand) <= 1
+        if isinstance(out, bool):
+            return pyo.Constraint.Feasible
+        else:
+            return out
+
+    def two_wide_near_are_prohibited_right_func(self, model, stand, time):
+    
+        
+        middle_stand = quicksum([self.time_calculate_func(flight, stand, time) * model.AS_occupied[flight, stand] for flight in self.FLIGHTS_WIDE])
+
         if stand + 1 in self.AIRCRAFT_STANDS:
             right_stand = quicksum([self.time_calculate_func(flight, stand + 1, time) * model.AS_occupied[flight, stand + 1] for flight in self.FLIGHTS_WIDE])
         else:
             right_stand = 0
         
-        out = (left_stand + middle_stand + right_stand) <= 1
+        out = (middle_stand + right_stand) <= 1
         if isinstance(out, bool):
             return pyo.Constraint.Feasible
         else:
@@ -737,6 +737,7 @@ class OptimizeDay:
         new_t = time.time()
         print(t - new_t, "1")
         new_t2 = time.time()
+        print(len(self.TIMES))
         # занимаемые места (Рейс * МC) - переменные
         self.model.AS_occupied = pyo.Var(self.FLIGHTS, self.AIRCRAFT_STANDS, within=pyo.Binary, initialize=0)
 
@@ -744,7 +745,7 @@ class OptimizeDay:
         print(new_t - new_t2, "2")
         new_t2 = time.time()
         # Cтоимость руления по аэродрому
-        self.model.airport_taxiing_cost = pyo.Expression(self.FLIGHTS, rule=self.airport_taxiing_cost_func)
+        self.model.airport_taxing_cost = pyo.Expression(self.FLIGHTS, rule=self.airport_taxing_cost_func)
         new_t = time.time()
         print(new_t - new_t2, "3")
         new_t2 = time.time()
@@ -759,7 +760,7 @@ class OptimizeDay:
         print(new_t - new_t2, "5")
         new_t2 = time.time()
         # Целевая переменная
-        self.model.OBJ = pyo.Objective(expr=quicksum([self.model.airport_taxiing_cost[flight] for flight in self.FLIGHTS]) +\
+        self.model.OBJ = pyo.Objective(expr=quicksum([self.model.airport_taxing_cost[flight] for flight in self.FLIGHTS]) +\
                                             quicksum([self.model.AS_using_cost[stand] for stand in self.AIRCRAFT_STANDS]) +\
                                             quicksum([self.model.busses_cost[flight] for flight in self.FLIGHTS]), sense=pyo.minimize)
 
@@ -772,8 +773,10 @@ class OptimizeDay:
         print(new_t - new_t2, "7")
         new_t2 = time.time()
 
-        self.model.two_wide_near_are_prohibited = pyo.Constraint(self.AIRCRAFT_STANDS_WITH_TRAPS, self.TIMES, rule=self.two_wide_near_are_prohibited_func)
+        self.model.two_wide_near_are_prohibited_left = pyo.Constraint(self.AIRCRAFT_STANDS_WITH_TRAPS, self.TIMES, rule=self.two_wide_near_are_prohibited_left_func)
 
+        self.model.two_wide_near_are_prohibited_right = pyo.Constraint(self.AIRCRAFT_STANDS_WITH_TRAPS, self.TIMES, rule=self.two_wide_near_are_prohibited_right_func)
+    
         new_t = time.time()
         print(new_t - new_t2, "8")
         new_t2 = time.time()
@@ -789,20 +792,45 @@ class OptimizeDay:
     def get_model(self):
         return self.model
 
+    @staticmethod
+    def __get_model_vars_values(pyomo_obj, out_column_name:str, keys:list):
+        out_df = pd.DataFrame().from_dict(pyomo_obj, orient='index', columns=[out_column_name])
+        if len(keys) == 1:
+            out_df[keys[0]] = out_df.index
+        else:
+            for num, k in enumerate(keys):
+                out_df[k] = out_df.index.map(lambda x: x[num])
+        out_df = out_df.reset_index(drop=True)
+        return out_df
+
+    @staticmethod
+    def __get_model_expr_values(pyomo_obj, out_column_name:str, keys:list):
+        out_df = pd.DataFrame().from_dict({i: pyo.value(pyomo_obj[i]) for i in pyomo_obj}, orient='index', columns=[out_column_name])
+        if len(keys) == 1:
+            out_df[keys[0]] = out_df.index
+        else:
+            for num, k in enumerate(keys):
+                out_df[k] = out_df.index.map(lambda x: x[num])
+        out_df = out_df.reset_index(drop=True)
+        return out_df
+        
     def get_solution(self):
         assert self.model is not None
-        AS_occupied_data = pd.DataFrame().from_dict(self.model.AS_occupied.extract_values(), orient='index', columns=['busy'])
-        AS_occupied_data['flight'] = AS_occupied_data.index.map(lambda x: x[0])
-        AS_occupied_data['stand'] = AS_occupied_data.index.map(lambda x: x[1])
-        AS_occupied_data = AS_occupied_data.reset_index(drop=True)
-        return AS_occupied_data
-        
+        as_ocupied_data = self.__get_model_vars_values(self.model.AS_occupied.extract_values(), 'busy', ['flight', 'stand'])
+
+        airport_taxing_cost_data = self.__get_model_expr_values(self.model.airport_taxing_cost.extract_values(), 'airport_taxing_cost_data', ['flight'])
+        AS_using_cost_data = self.__get_model_expr_values(self.model.AS_using_cost.extract_values(), 'AS_using_cost_data', ['flight'])
+        busses_cost_data = self.__get_model_expr_values(self.model.busses_cost.extract_values(), 'busses_cost_data', ['flight'])
+
+        out = as_ocupied_data[as_ocupied_data['busy'] == 1]
+        out = out.merge(airport_taxing_cost_data, on='flight').merge(AS_using_cost_data, on='flight').merge(busses_cost_data, on='flight')
+        return out
+
 
 if __name__ == "__main__":
     d = DataExtended()
     
     opt = OptimizeDay(d)
-    opt.make_model(datetime(2019, 5, 17, 0, 0), datetime(2019, 5, 17, 23, 55))
-    o = opt.get_model()
-
-
+    opt.make_model(datetime(2019, 5, 17, 0, 0), datetime(2019, 5, 18, 0, 0))
+    out_file = opt.get_solution()
+    out_file.to_csv('solution.csv')
