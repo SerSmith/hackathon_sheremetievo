@@ -60,7 +60,7 @@ class Data():
             flights_pd['index'] = flights_pd.index
             flights_pd.drop(['Aircraft_Stand'], axis=1, inplace=True)
             self.flights_dict  = flights_pd.to_dict()
-        return self.flights_dict 
+        return self.flights_dict
 
 
 class DataExtended(Data):
@@ -178,17 +178,29 @@ class OptimizationSolution():
     
     def prepare_solution(self, solution_df):
         """Извлекает из датайфрема с решением номера занятых МС и индексы рейсов
+        + стоимость рулежки, использования МС и автобусов
         Args:
-            solution_df ([type]): [description]
+            solution_df (pd.DataFrame): [description]
         Returns:
-            [type]: [description]
+            pd.DataFrame: [description]
         """
         solution_df = solution_df.copy()
 
         solution_df = solution_df[solution_df['busy'] == 1].drop(columns='busy')
         
         solution_df = solution_df.set_index('flight')
-        solution_df = solution_df.rename(columns={'stand': 'Aircraft_Stand', 'Unnamed: 0': 'solution_index'})
+        solution_df = solution_df.drop(columns='Unnamed: 0')
+
+        solution_df = solution_df.rename(columns={'stand': 'Aircraft_Stand',
+                                                  'airport_taxing_cost_data': 'Taxiing_cost_solution',
+                                                  'AS_using_cost_data': 'Parking_usage_cost_solution',
+                                                  'busses_cost_data': 'Bus_usage_cost_solution'})
+
+        solution_df['Total_cost_solution'] = \
+            solution_df['Taxiing_cost_solution'] + \
+                solution_df['Parking_usage_cost_solution'] + \
+                    solution_df['Bus_usage_cost_solution']
+
         solution_df.index.name = None
         return solution_df
 
@@ -271,8 +283,12 @@ class OptimizationSolution():
         flight_data = self.timetable_df.copy()
         flight_data['Aircraft_Class'] = aircraft_class
         flight_data = flight_data.drop(columns='Aircraft_Stand')
-        flight_data = flight_data.join(prepared_solution['Aircraft_Stand'], how='left')
-        flight_data = flight_data.join(prepared_solution['solution_index'], how='left')
+        flight_data = flight_data.join(prepared_solution[['Aircraft_Stand',
+                                                         'Taxiing_cost_solution',
+                                                         'Parking_usage_cost_solution',
+                                                         'Bus_usage_cost_solution',
+                                                         'Total_cost_solution']], how='left')
+
         flight_data = flight_data.merge(self.aircraft_stands_df, on='Aircraft_Stand', how='left')
         flight_data = flight_data.merge(self.handling_time_df, on='Aircraft_Class', how='left')
         flight_data['flight_datetime'] = pd.to_datetime(flight_data['flight_datetime'])
@@ -467,13 +483,16 @@ class OptimizationSolution():
 
         # Стоимость использования перронных автобусов для посадки/высадки пассажиров
         flight_data['Bus_usage_cost'] = flight_data['Bus_Time'] * flight_data['num_needed_Buses'] * handling_rates_dict['Bus_Cost_per_Minute']
-        flight_data['Total_cost_Bus'] = flight_data['Taxiing_cost']	+ \
+
+        flight_data['Bus_usage_cost'] = ~flight_data['JetBridge_can_be_used'] * flight_data['Bus_usage_cost']
+
+        flight_data['Total_cost'] = flight_data['Taxiing_cost']	+ \
             flight_data['Parking_usage_cost'] + \
                 flight_data['Bus_usage_cost']
 
-        flight_data['Total_cost_Jetbridge_(if_possibe)'] = flight_data['Taxiing_cost']	+ \
-            flight_data['Parking_usage_cost'] + \
-                flight_data['Bus_usage_cost'] * ~flight_data['JetBridge_can_be_used']
+        # flight_data['Total_cost_Jetbridge_(if_possibe)'] = flight_data['Taxiing_cost']	+ \
+        #     flight_data['Parking_usage_cost'] + \
+        #         flight_data['Bus_usage_cost'] * ~flight_data['JetBridge_can_be_used']
 
         flight_data['is_wide_body_intersect'] = flight_data['is_wide_body_intersect'].fillna(False)
         self.flight_data = flight_data
@@ -558,16 +577,101 @@ class OptimizationSolution():
         
         return True
 
+    
+    def check_taxiing_cost(self):
+        if self.flight_data is None:
+            print('Нет данных для анализа. Запустите метод calculate_all_data')
+            return False
 
-    def check_target_cost(self):
-        pass
+        sum_conflicts = (self.flight_data['Taxiing_cost'] != self.flight_data['Taxiing_cost_solution']).sum()
+        problem_index = list( self.flight_data[
+            self.flight_data['Taxiing_cost'] != self.flight_data['Taxiing_cost_solution']
+            ].index )
+
+        if sum_conflicts > 0:
+            print('Обнаружены проблемы в стоимости рулежки! Индексы рейсов:')
+            print(list(problem_index))
+            self.__update_problem_index(problem_index)
+            return False
+        
+        return True
+
+    
+    def check_bus_cost(self):
+        if self.flight_data is None:
+            print('Нет данных для анализа. Запустите метод calculate_all_data')
+            return False
+
+        sum_conflicts = (self.flight_data['Bus_usage_cost'] != self.flight_data['Bus_usage_cost_solution']).sum()
+        problem_index = list( self.flight_data[
+            self.flight_data['Bus_usage_cost'] != self.flight_data['Bus_usage_cost_solution']
+            ].index )
+
+        if sum_conflicts > 0:
+            print('Обнаружены проблемы в стоимости автобусов! Индексы рейсов:')
+            print(list(problem_index))
+            self.__update_problem_index(problem_index)
+            return False
+        
+        return True
+
+
+    def check_parking_cost(self):
+        if self.flight_data is None:
+            print('Нет данных для анализа. Запустите метод calculate_all_data')
+            return False
+
+        sum_conflicts = (self.flight_data['Parking_usage_cost'] != self.flight_data['Parking_usage_cost_solution']).sum()
+        problem_index = list( self.flight_data[
+            self.flight_data['Parking_usage_cost'] != self.flight_data['Parking_usage_cost_solution']
+            ].index )
+
+        if sum_conflicts > 0:
+            print('Обнаружены проблемы в стоимости МС! Индексы рейсов:')
+            print(list(problem_index))
+            self.__update_problem_index(problem_index)
+            return False
+        
+        return True
+
+
+    def check_total_cost(self):
+        if self.flight_data is None:
+            print('Нет данных для анализа. Запустите метод calculate_all_data')
+            return False
+
+        sum_conflicts = (self.flight_data['Total_cost'] != self.flight_data['Total_cost_solution']).sum()
+        problem_index = list( self.flight_data[
+            self.flight_data['Total_cost'] != self.flight_data['Total_cost_solution']
+            ].index )
+
+        if sum_conflicts > 0:
+            print('Обнаружены проблемы в общей стоимости! Индексы рейсов:')
+            print(list(problem_index))
+            self.__update_problem_index(problem_index)
+            return False
+        
+        return True
 
     def solution_fullcheck(self):
         check_parking = self.check_parking_conflicts()
         check_widebody = self.check_wide_body_conflicts()
         check_jetbridge = self.check_jetbridge()
         check_flights_placed = self.check_all_flights_placed()
-        if not all([check_parking, check_widebody, check_jetbridge, check_flights_placed]):
+        check_cost_taxiing =  self.check_taxiing_cost()
+        check_cost_bus = self.check_bus_cost()
+        check_cost_parking = self.check_parking_cost()
+        check_cost_total = self.check_total_cost()
+
+        if not all([check_parking, 
+                    check_widebody,
+                    check_jetbridge,
+                    check_flights_placed,
+                    check_cost_taxiing,
+                    check_cost_bus,
+                    check_cost_parking,
+                    check_cost_total
+                    ]):
             print('Solution fullcheck failed!')
             return False
         return True
