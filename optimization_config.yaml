@@ -7,9 +7,9 @@ optimization_parameters: # Настройки
   output_solution_path: 'solution.csv'   # Место записи решения
   output_results_path: 'scenarios/base_scenario.csv'   # Место записи данных для дашборда
   model_saver:   # Настройки режим запуска
-    save_model: False   # Флаг - сохранение модели
+    save_model: True   # Флаг - сохранение модели
     model_path: 'pyo_model'   # Путь модели
-    load_model: True   # Флаг подгрузки модели
+    load_model: False   # Флаг подгрузки модели
   solver:   # Настройки солвера
     solver_path: "/usr/local/bin/cbc"   # Путь к солверу
     solver_name: 'cbc'   # Имя солвера
@@ -20,5 +20,5 @@ optimization_parameters: # Настройки
   #  end_date: [2019, 5, 17, 0, 5]
 dashboard_parameters: # Настройки дашборда
   solutions_paths: # Список сценариев
-    Базовый сценарий: '/Users/sergey_kuznetsov/Documents/Cifrovoy_proriv_sheremetievo/scenarios/base_scenario.csv'
-    Сценарий с дополнительными трапами: '/Users/sergey_kuznetsov/Documents/Cifrovoy_proriv_sheremetievo/scenarios/additional_traps.csv'
+    Базовый сценарий: 'scenarios/base_scenario.csv'
+    Сценарий с дополнительными трапами: 'scenarios/additional_traps.csv'
