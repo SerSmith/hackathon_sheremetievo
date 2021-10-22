@@ -887,7 +887,7 @@ class OptimizeDay:
         self.model.OBJ = pyo.Objective(expr=quicksum([self.model.airport_taxing_cost[flight] for flight in self.model.FLIGHTS]) +\
                                             quicksum([self.model.AS_using_cost[stand] for stand in self.model.AIRCRAFT_STANDS]) +\
                                             quicksum([self.model.busses_cost[flight] for flight in self.model.FLIGHTS]), sense=pyo.minimize)
-        t = time.time())
+        t = time.time()
         print("Начался расчет only_one_flight_per_place") 
         self.model.only_one_flight_per_place = pyo.Constraint(self.model.AIRCRAFT_STANDS, self.model.TIMES, rule=self.__only_one_flight_per_place_func)
         print(f"Закончился расчет only_one_flight_per_place, {time.time() - t}") 
