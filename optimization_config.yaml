@@ -1,14 +1,23 @@
-data_folder_path: 'data'
-output_solution_path: 'solution.csv'
-solver:
-  solver_path: "/usr/local/bin/cbc"
-  solver_name: 'cbc'
-  logfile_path: 'SOLVE_LOG.log'
-solver_config:
-  ratioGap: 0.0001
-  sec: 7200
-task_config:
- bus_capacity: 80
- start_date: [2019, 5, 17, 0, 0]
- end_date: [2019, 5, 18, 0, 0]
-#  end_date: [2019, 5, 17, 0, 5]
+task_config:   # Настройки задачи
+  bus_capacity: 80   # Количество людей, помещающихся в автобус
+  start_date: [2019, 5, 17, 0, 0]   # Дата начала оптимизмируемого периода
+  end_date: [2019, 5, 18, 0, 0]   # Дата окончания оптимизмируемого периода
+optimization_parameters: # Настройки
+  data_folder_path: 'data'  # Адресс папка с данными
+  output_solution_path: 'solution.csv'   # Место записи решения
+  model_saver:   # Настройки режим запуска
+    save_model: False   # Флаг - сохранение модели
+    model_path: 'pyo_model'   # Путь модели
+    load_model: True   # Флаг подгрузки модели
+  solver:   # Настройки солвера
+    solver_path: "/usr/local/bin/cbc"   # Путь к солверу
+    solver_name: 'cbc'   # Имя солвера
+    logfile_path: 'SOLVE_LOG.log'   # Путь лога солвера
+  solver_config:   # Конфиг солвера
+    ratioGap: 0.3   # Допустимое отклонение от потенциального оптимального решения
+    sec: 7200   # Верхний предел по времени работы солвера
+  #  end_date: [2019, 5, 17, 0, 5]
+dashboard_parameters: # Настройки дашборда
+  solutions_paths: # Список сценариев
+    Базовый сценарий: '/Users/sergey_kuznetsov/Documents/Cifrovoy_proriv_sheremetievo/scenarios/base_scenario.csv'
+    Сценарий с дополнительными трапами: '/Users/sergey_kuznetsov/Documents/Cifrovoy_proriv_sheremetievo/scenarios/additional_traps.csv'

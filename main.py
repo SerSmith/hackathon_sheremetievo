@@ -1,20 +1,36 @@
 import datetime
 
 import yaml
-
+import cloudpickle
 from src import model
 
 with open("optimization_config.yaml", "rb") as h:
     config = yaml.safe_load(h)
 
-# запускаем оптимизацию
-optim = model.OptimizeDay(config)
-optim.run_optimization(datetime.datetime(*config['task_config']['start_date']),
-                       datetime.datetime(*config['task_config']['end_date']))
+
+if not config['optimization_parameters']['model_saver']['load_model']:
+    # запускаем оптимизацию
+    optim = model.OptimizeDay(config)
+    optim.make_problem_obj(datetime.datetime(*config['task_config']['start_date']),
+                        datetime.datetime(*config['task_config']['end_date']))
+
+    if config['optimization_parameters']['model_saver']['save_model']:
+        model_to_save = optim.get_model()
+        with open(config['optimization_parameters']['model_saver']['model_path'], 'wb') as h:
+            cloudpickle.dump(model_to_save, h)
+else:
+    with open(config['optimization_parameters']['model_saver']['model_path'], 'rb') as h:
+        loaded_model = cloudpickle.load(h)
+        optim = model.OptimizeDay(config)
+        optim.set_model(loaded_model)
+
+optim.solve_model()
 solution = optim.get_solution()
 solution.to_csv(config['output_solution_path'])
 
-# проверяем расчет 
+# проверяем рассчет 
 solution_check = model.OptimizationSolution(data_folder=config['data_folder_path'], solution_path=config['output_solution_path'])
 solution_check.calculate_all_data()
 status = solution_check.solution_fullcheck()
+
+

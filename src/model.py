@@ -33,6 +33,8 @@ class Data():
     
     def get_handling_rates(self):
         if self.handling_rates_dict is None:
+            # AirCraftClasses_Public.csv
+            # handling_rates_folder = os.path.join(self.data_folder, 'Handling_Rates_SVO_Private.csv')
             handling_rates_folder = os.path.join(self.data_folder, 'Handling_Rates_Public.csv')
             handling_rates_pd = pd.read_csv(handling_rates_folder)
             self.handling_rates_dict = handling_rates_pd.set_index('Name').to_dict()['Value']
@@ -47,7 +49,8 @@ class Data():
 
     def get_aircraft_stands(self):
         if self.aircraft_stands_dict is None:
-            aircraft_stands_folder = os.path.join(self.data_folder, 'Aircraft_Stands_Private.csv')
+            # aircraft_stands_folder = os.path.join(self.data_folder, 'Aircraft_Stands_Private.csv')
+            aircraft_stands_folder = os.path.join(self.data_folder, 'Aircraft_Stands_Public.csv')
             aircraft_stands_pd = pd.read_csv(aircraft_stands_folder)
             aircraft_stands_pd = aircraft_stands_pd.set_index('Aircraft_Stand')
             aircraft_stands_pd['index'] = aircraft_stands_pd.index
@@ -80,7 +83,7 @@ class DataExtended(Data):
         for (flight_number, capacity_of_flight) in flights_data['flight_AC_PAX_capacity_total'].items():
             for (aircraft_class, number_seats) in aircraft_classes_data['Max_Seats'].items():
                 if capacity_of_flight <= number_seats:
-                    aircraft_class_dict.update({flight_number: aircraft_class })
+                    aircraft_class_dict.update({flight_number: aircraft_class})
                     break
         return aircraft_class_dict
 
@@ -128,7 +131,8 @@ class OptimizationSolution():
         aircraft_stands_path = os.path.join(self.data_folder, 'Aircraft_Stands_Public.csv')
         self.aircraft_stands_df = pd.read_csv(aircraft_stands_path).reset_index(drop=True)
 
-        handling_rates_path = os.path.join(self.data_folder, 'Handling_Rates_SVO_Private.csv')
+        # handling_rates_path = os.path.join(self.data_folder, 'Handling_Rates_SVO_Private.csv')
+        handling_rates_path = os.path.join(self.data_folder, 'Handling_Rates_Public.csv')
         self.handling_rates_df = pd.read_csv(handling_rates_path).reset_index(drop=True)
 
         handling_time_path = os.path.join(self.data_folder, 'Handling_Time_Public.csv')
@@ -685,14 +689,14 @@ class OptimizeDay:
     def __init__(self, config: dict):
         self.config = config
         self.model = None
-        self.data = DataExtended(config['data_folder_path'], config['task_config']['bus_capacity'])
+        self.data = DataExtended(config['optimization_parameters']['data_folder_path'], config['task_config']['bus_capacity'])
         self.opt = None
 
     def __set_solver(self):
         """ Настройка солвера
         """
-        self.opt = SolverFactory(self.config['solver']['solver_name'], executable=self.config['solver']['solver_path'])
-        self.opt.options = self.config['solver_config']
+        self.opt = SolverFactory(self.config['optimization_parameters']['solver']['solver_name'], executable=self.config['optimization_parameters']['solver']['solver_path'])
+        self.opt.options = self.config['optimization_parameters']['solver_config']
 
     def __get_times(self, start_dt, end_dt):
         """Генерация листа временных интервалов, для которых будет проведена оптимизация
@@ -710,7 +714,7 @@ class OptimizeDay:
         end_dt_with_add_time = end_dt + timedelta(minutes=max(self.model.AIRCRAFT_STANDS_DATA['Taxiing_Time'].values())) + timedelta(minutes=10)
         while current_dt < end_dt_with_add_time:
             result_5minutes_list.append(current_dt)
-            current_dt = current_dt + timedelta(minutes=1)
+            current_dt = current_dt + timedelta(minutes=5)
         return result_5minutes_list
 
     @staticmethod
@@ -842,15 +846,13 @@ class OptimizeDay:
         return quicksum([model.AS_occupied[flight, stand] for stand in model.AIRCRAFT_STANDS]) == 1
 
 
-    def run_optimization(self, start_dt=datetime(2019, 5, 17, 0, 0), end_dt=datetime(2019, 5, 17, 23, 55)):
+    def make_problem_obj(self, start_dt=datetime(2019, 5, 17, 0, 0), end_dt=datetime(2019, 5, 17, 23, 55)):
         """
 
         Args:
             start_dt ([type], optional): Начало периода оптимизации. Defaults to datetime(2019, 5, 17, 0, 0).
             end_dt ([type], optional): Конец периода оптимизации. Defaults to datetime(2019, 5, 17, 23, 55).
         """
-        self.__set_solver()
-
         self.model = pyo.ConcreteModel()
 
         # Словари входных параметров
@@ -898,13 +900,20 @@ class OptimizeDay:
         self.model.two_wide_near_are_prohibited_right = pyo.Constraint(self.model.AIRCRAFT_STANDS_WITH_TRAPS, self.model.TIMES, rule=self.__two_wide_near_are_prohibited_right_func)
 
         self.model.every_flight_must_have_its_stand = pyo.Constraint(self.model.FLIGHTS, rule=self.__every_flight_must_have_its_stand_func)
-        
-        print("Модель запустилась")
-        self.opt_output = self.opt.solve(self.model, logfile=self.config['solver']['logfile_path'])
-        print(self.opt_output)
+
 
     def get_model(self):
         return self.model
+
+    def set_model(self, model):
+        self.model = model
+        return self
+    
+    def solve_model(self):
+        self.__set_solver()
+        print("Модель запустилась")
+        self.opt_output = self.opt.solve(self.model, logfile=self.config['optimization_parameters']['solver']['logfile_path'])
+        print(self.opt_output)
 
     @staticmethod
     def __get_model_vars_values(pyomo_obj, out_column_name:str, keys:list):
