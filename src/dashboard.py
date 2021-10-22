@@ -107,7 +107,7 @@ def draw_dashboard(config, scenario_name):
     flight_id_df['procent'] = flight_id_df['procent'].apply(lambda x: str(round(x,1))+'%')
 
     with row1_2, _lock:
-        st.subheader('Количество внутренних/внешних рейсов')
+        st.subheader('Количество внутренних или    внешних рейсов       ')
         try:
             fig = go.Figure(go.Bar(
                 x=list(flight_id_df['flight_number']),
@@ -130,7 +130,7 @@ def draw_dashboard(config, scenario_name):
     flight_id_df['procent'] = flight_id_df['procent'].apply(lambda x: str(round(x,1))+'%')
 
     with row2_1, _lock:
-        st.subheader('Количество внутренних/внешних рейсов c использованием телетрапа')
+        st.subheader('Количество внутренних или внешних рейсов c использованием телетрапа')
         try:
             fig = go.Figure(go.Bar(
                 x=list(flight_id_df['flight_number']),
@@ -151,7 +151,7 @@ def draw_dashboard(config, scenario_name):
     aircraft_class_df['procent'] = aircraft_class_df['procent'].apply(lambda x: str(round(x,1))+'%')
 
     with row2_2, _lock:
-        st.subheader('Количество рейсов в зависимости от типа ВС')
+        st.subheader('Количество рейсов в зависимости от типа ВС \n ')
         try:
             fig = go.Figure(go.Bar(
                 x=list(aircraft_class_df['flight_number']),
