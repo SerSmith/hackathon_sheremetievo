@@ -46,7 +46,7 @@ class Data():
 
     def get_aircraft_stands(self):
         if self.aircraft_stands_dict is None:
-            aircraft_stands_folder = os.path.join(self.data_folder, 'Aircraft_Stands_Public.csv')
+            aircraft_stands_folder = os.path.join(self.data_folder, 'Aircraft_Stands_Private.csv')
             aircraft_stands_pd = pd.read_csv(aircraft_stands_folder)
             aircraft_stands_pd = aircraft_stands_pd.set_index('Aircraft_Stand')
             aircraft_stands_pd['index'] = aircraft_stands_pd.index
@@ -127,7 +127,7 @@ class OptimizationSolution():
         aircraft_stands_path = os.path.join(self.data_folder, 'Aircraft_Stands_Public.csv')
         self.aircraft_stands_df = pd.read_csv(aircraft_stands_path).reset_index(drop=True)
 
-        handling_rates_path = os.path.join(self.data_folder, 'Handling_Rates_Public.csv')
+        handling_rates_path = os.path.join(self.data_folder, 'Handling_Rates_SVO_Private.csv')
         self.handling_rates_df = pd.read_csv(handling_rates_path).reset_index(drop=True)
 
         handling_time_path = os.path.join(self.data_folder, 'Handling_Time_Public.csv')
@@ -709,7 +709,7 @@ class OptimizeDay:
         end_dt_with_add_time = end_dt + timedelta(minutes=max(self.model.AIRCRAFT_STANDS_DATA['Taxiing_Time'].values())) + timedelta(minutes=10)
         while current_dt < end_dt_with_add_time:
             result_5minutes_list.append(current_dt)
-            current_dt = current_dt + timedelta(minutes=5)
+            current_dt = current_dt + timedelta(minutes=1)
         return result_5minutes_list
 
     @staticmethod
@@ -887,10 +887,10 @@ class OptimizeDay:
         self.model.OBJ = pyo.Objective(expr=quicksum([self.model.airport_taxing_cost[flight] for flight in self.model.FLIGHTS]) +\
                                             quicksum([self.model.AS_using_cost[stand] for stand in self.model.AIRCRAFT_STANDS]) +\
                                             quicksum([self.model.busses_cost[flight] for flight in self.model.FLIGHTS]), sense=pyo.minimize)
-
+        t = time.time())
         print("Начался расчет only_one_flight_per_place") 
         self.model.only_one_flight_per_place = pyo.Constraint(self.model.AIRCRAFT_STANDS, self.model.TIMES, rule=self.__only_one_flight_per_place_func)
-        print("Закончился расчет only_one_flight_per_place") 
+        print(f"Закончился расчет only_one_flight_per_place, {time.time() - t}") 
 
         self.model.two_wide_near_are_prohibited_left = pyo.Constraint(self.model.AIRCRAFT_STANDS_WITH_TRAPS, self.model.TIMES, rule=self.__two_wide_near_are_prohibited_left_func)
 
