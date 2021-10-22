@@ -1,14 +1,35 @@
+# Адресс папка с данными
 data_folder_path: 'data'
+# Место записи решения
 output_solution_path: 'solution.csv'
+# Настройки режим запуска
+model_saver:
+# Флаг - сохранение модели
+  save_model: True
+# Путь модели
+  model_path: 'pyo_model'
+# Флаг подгрузки модели
+  load_model: False
+# Настройки солвера
 solver:
+# Путь к солверу
   solver_path: "/usr/local/bin/cbc"
+# Имя солвера
   solver_name: 'cbc'
+# Путь лога солвера
   logfile_path: 'SOLVE_LOG.log'
+# Конфиг солвера
 solver_config:
-  ratioGap: 0.0001
+# Допустимое отклонение от потенциального оптимального решения
+  ratioGap: 0.3
+# Верхний предел по времени работы солвера
   sec: 7200
+# Настройки задачи
 task_config:
+# Количество людей, помещающихся в автобус
  bus_capacity: 80
+# Дата начала оптимизмируемого перуда
  start_date: [2019, 5, 17, 0, 0]
+# Дата окончания оптимизмируемого перуда
  end_date: [2019, 5, 18, 0, 0]
 #  end_date: [2019, 5, 17, 0, 5]
