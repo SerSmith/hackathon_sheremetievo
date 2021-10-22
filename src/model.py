@@ -34,8 +34,8 @@ class Data():
     def get_handling_rates(self):
         if self.handling_rates_dict is None:
             # AirCraftClasses_Public.csv
-            # handling_rates_folder = os.path.join(self.data_folder, 'Handling_Rates_SVO_Private.csv')
-            handling_rates_folder = os.path.join(self.data_folder, 'Handling_Rates_Public.csv')
+            handling_rates_folder = os.path.join(self.data_folder, 'Handling_Rates_SVO_Private.csv')
+            # handling_rates_folder = os.path.join(self.data_folder, 'Handling_Rates_Public.csv')
             handling_rates_pd = pd.read_csv(handling_rates_folder)
             self.handling_rates_dict = handling_rates_pd.set_index('Name').to_dict()['Value']
         return self.handling_rates_dict
@@ -49,8 +49,8 @@ class Data():
 
     def get_aircraft_stands(self):
         if self.aircraft_stands_dict is None:
-            # aircraft_stands_folder = os.path.join(self.data_folder, 'Aircraft_Stands_Private.csv')
-            aircraft_stands_folder = os.path.join(self.data_folder, 'Aircraft_Stands_Public.csv')
+            aircraft_stands_folder = os.path.join(self.data_folder, 'Aircraft_Stands_Private.csv')
+            # aircraft_stands_folder = os.path.join(self.data_folder, 'Aircraft_Stands_Public.csv')
             aircraft_stands_pd = pd.read_csv(aircraft_stands_folder)
             aircraft_stands_pd = aircraft_stands_pd.set_index('Aircraft_Stand')
             aircraft_stands_pd['index'] = aircraft_stands_pd.index
@@ -714,7 +714,7 @@ class OptimizeDay:
         end_dt_with_add_time = end_dt + timedelta(minutes=max(self.model.AIRCRAFT_STANDS_DATA['Taxiing_Time'].values())) + timedelta(minutes=10)
         while current_dt < end_dt_with_add_time:
             result_5minutes_list.append(current_dt)
-            current_dt = current_dt + timedelta(minutes=5)
+            current_dt = current_dt + timedelta(minutes=1)
         return result_5minutes_list
 
     @staticmethod
