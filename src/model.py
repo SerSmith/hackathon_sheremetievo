@@ -704,7 +704,8 @@ class OptimizeDay:
             list: список начал временных интервалов
         """
         result_5minutes_list = []
-        current_dt = start_dt
+        start_dt_with_add_time = start_dt - timedelta(minutes=max(self.model.AIRCRAFT_STANDS_DATA['Taxiing_Time'].values())) - timedelta(minutes=10)
+        current_dt = start_dt_with_add_time
         end_dt_with_add_time = end_dt + timedelta(minutes=max(self.model.AIRCRAFT_STANDS_DATA['Taxiing_Time'].values())) + timedelta(minutes=10)
         while current_dt < end_dt_with_add_time:
             result_5minutes_list.append(current_dt)
