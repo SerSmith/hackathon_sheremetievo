@@ -33,7 +33,7 @@ class Data():
     
     def get_handling_rates(self):
         if self.handling_rates_dict is None:
-            handling_rates_folder = os.path.join(self.data_folder, 'Handling_Rates_Public.csv')
+            handling_rates_folder = os.path.join(self.data_folder, 'Handling_Rates_SVO_Private.csv')
             handling_rates_pd = pd.read_csv(handling_rates_folder)
             self.handling_rates_dict = handling_rates_pd.set_index('Name').to_dict()['Value']
         return self.handling_rates_dict
