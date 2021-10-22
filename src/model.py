@@ -754,13 +754,13 @@ class OptimizeDay:
         """
         cost_vc_using_jetbridge = quicksum(
                         [model.AS_occupied[flight, stand] *
-                         model.HANGLING_TIME['JetBridge_Handling_Time'][model.FLIGHTS_DATA['aircraft_class'][stand]] *
+                         model.HANGLING_TIME['JetBridge_Handling_Time'][model.FLIGHTS_DATA['aircraft_class'][flight]] *
                          model.HANDLING_RATES_DATA['JetBridge_Aircraft_Stand_Cost_per_Minute'] * utils.teletrap_can_be_used_on_stand(stand, model.AIRCRAFT_STANDS_DATA) *
                          utils.teletrap_can_be_used(flight, stand, model.FLIGHTS_DATA, model.AIRCRAFT_STANDS_DATA) 
                          for stand in model.AIRCRAFT_STANDS])
         cost_vc_without_using_jetbridge = quicksum(
                          [model.AS_occupied[flight, stand] *
-                         model.HANGLING_TIME['Away_Handling_Time'][model.FLIGHTS_DATA['aircraft_class'][stand]] *
+                         model.HANGLING_TIME['Away_Handling_Time'][model.FLIGHTS_DATA['aircraft_class'][flight]] *
                          (model.HANDLING_RATES_DATA['Away_Aircraft_Stand_Cost_per_Minute'] * (1 - utils.teletrap_can_be_used_on_stand(stand, model.AIRCRAFT_STANDS_DATA)) + 
                           model.HANDLING_RATES_DATA['JetBridge_Aircraft_Stand_Cost_per_Minute'] * utils.teletrap_can_be_used_on_stand(stand, model.AIRCRAFT_STANDS_DATA)) * 
                          (1 - utils.teletrap_can_be_used(flight, stand, model.FLIGHTS_DATA, model.AIRCRAFT_STANDS_DATA))
