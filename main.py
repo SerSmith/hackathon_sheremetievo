@@ -32,5 +32,7 @@ solution.to_csv(config['output_solution_path'])
 solution_check = model.OptimizationSolution(data_folder=config['data_folder_path'], solution_path=config['output_solution_path'])
 solution_check.calculate_all_data()
 status = solution_check.solution_fullcheck()
+result = solution_check.calculate_all_data()
+result.to_csv(config['optimization_parameters']['output_results_path'])
 
 

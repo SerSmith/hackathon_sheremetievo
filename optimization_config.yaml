@@ -5,6 +5,7 @@ task_config:   # Настройки задачи
 optimization_parameters: # Настройки
   data_folder_path: 'data'  # Адресс папка с данными
   output_solution_path: 'solution.csv'   # Место записи решения
+  output_results_path: 'scenarios/base_scenario.csv'   # Место записи данных для дашборда
   model_saver:   # Настройки режим запуска
     save_model: False   # Флаг - сохранение модели
     model_path: 'pyo_model'   # Путь модели
