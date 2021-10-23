@@ -25,7 +25,7 @@ class Data():
     
     def get_aircraft_classes(self):
         if self.aircraft_classes_dict is None:
-            aircraft_folder = os.path.join(self.data_folder, 'AirCraftClasses_Public.csv')
+            aircraft_folder = os.path.join(self.data_folder, 'AirCraft_Classes_Private.csv')
             aircraft_pd = pd.read_csv(aircraft_folder)
             self.aircraft_classes_dict = aircraft_pd.set_index('Aircraft_Class').to_dict()
         
@@ -33,16 +33,14 @@ class Data():
     
     def get_handling_rates(self):
         if self.handling_rates_dict is None:
-            # AirCraftClasses_Public.csv
-            handling_rates_folder = os.path.join(self.data_folder, 'Handling_Rates_SVO_Private.csv')
-            # handling_rates_folder = os.path.join(self.data_folder, 'Handling_Rates_Public.csv')
+            handling_rates_folder = os.path.join(self.data_folder, 'Handling_Rates_Private.csv')
             handling_rates_pd = pd.read_csv(handling_rates_folder)
             self.handling_rates_dict = handling_rates_pd.set_index('Name').to_dict()['Value']
         return self.handling_rates_dict
 
     def get_handling_time(self):
         if self.handling_time_dict is None:
-            handling_time_folder = os.path.join(self.data_folder, 'Handling_Time_Public.csv')
+            handling_time_folder = os.path.join(self.data_folder, 'Handling_Time_Private.csv')
             handling_time_pd = pd.read_csv(handling_time_folder)
             self.handling_time_dict = handling_time_pd.set_index('Aircraft_Class').to_dict()
         return self.handling_time_dict
@@ -50,7 +48,6 @@ class Data():
     def get_aircraft_stands(self):
         if self.aircraft_stands_dict is None:
             aircraft_stands_folder = os.path.join(self.data_folder, 'Aircraft_Stands_Private.csv')
-            # aircraft_stands_folder = os.path.join(self.data_folder, 'Aircraft_Stands_Public.csv')
             aircraft_stands_pd = pd.read_csv(aircraft_stands_folder)
             aircraft_stands_pd = aircraft_stands_pd.set_index('Aircraft_Stand')
             aircraft_stands_pd['index'] = aircraft_stands_pd.index
@@ -59,7 +56,7 @@ class Data():
 
     def get_flights(self):
         if self.flights_dict is None:
-            flights_folder = os.path.join(self.data_folder, 'Timetable_Public.csv')
+            flights_folder = os.path.join(self.data_folder, 'Timetable_Private.csv')
             flights_pd = pd.read_csv(flights_folder)
             flights_pd = flights_pd.reset_index(drop=True)
             flights_pd['index'] = flights_pd.index
@@ -89,7 +86,7 @@ class DataExtended(Data):
 
     def get_flights(self):
         flights = super().get_flights()
-        flights['flight_datetime'] = {i: j for (i, j) in enumerate(list(map(lambda x: datetime.strptime(x, '%Y-%m-%d %H:%M:%S'), list(flights['flight_datetime'].values()))))}
+        flights['flight_datetime'] = {i: j for (i, j) in enumerate(list(map(lambda x: datetime.strptime(x, '%d.%m.%Y %H:%M'), list(flights['flight_datetime'].values()))))}
         flights['quantity_busses'] = {key: np.ceil(flights['flight_PAX'][key] / self.bus_capacity) for key in flights['flight_PAX'].keys()}
         flights['aircraft_class'] = self.__find_aircraft_class(flights)
         return flights
@@ -122,20 +119,19 @@ class OptimizationSolution():
 
     
     def load_all_data(self):
-        aircraft_classes_path = os.path.join(self.data_folder, 'AirCraftClasses_Public.csv')
+        aircraft_classes_path = os.path.join(self.data_folder, 'AirCraft_Classes_Private.csv')
         self.aircraft_classes_df = pd.read_csv(aircraft_classes_path).reset_index(drop=True)
 
-        timetable_path = os.path.join(self.data_folder, 'Timetable_Public.csv')
+        timetable_path = os.path.join(self.data_folder, 'Timetable_private.csv')
         self.timetable_df = pd.read_csv(timetable_path).reset_index(drop=True)
 
-        aircraft_stands_path = os.path.join(self.data_folder, 'Aircraft_Stands_Public.csv')
+        aircraft_stands_path = os.path.join(self.data_folder, 'Aircraft_Stands_Private.csv')
         self.aircraft_stands_df = pd.read_csv(aircraft_stands_path).reset_index(drop=True)
 
-        # handling_rates_path = os.path.join(self.data_folder, 'Handling_Rates_SVO_Private.csv')
-        handling_rates_path = os.path.join(self.data_folder, 'Handling_Rates_Public.csv')
+        handling_rates_path = os.path.join(self.data_folder, 'Handling_Rates_Private.csv')
         self.handling_rates_df = pd.read_csv(handling_rates_path).reset_index(drop=True)
 
-        handling_time_path = os.path.join(self.data_folder, 'Handling_Time_Public.csv')
+        handling_time_path = os.path.join(self.data_folder, 'Handling_Time_Private.csv')
         self.handling_time_df = pd.read_csv(handling_time_path).reset_index(drop=True)
 
 
@@ -684,6 +680,17 @@ class OptimizationSolution():
             print('Solution fullcheck failed!')
             return False
         return True
+
+    def get_solution_send_format(self):
+        self.load_all_data()
+        flights_pd = self.timetable_df.reset_index(drop=True)
+        flights_pd['index'] = flights_pd.index
+        flights_pd = flights_pd.drop(columns=['Unnamed: 0', 'Aircraft_Stand'])
+        solution_df = self.get_solution_file()
+        solution_df = solution_df[['flight', 'stand']].rename(columns={'stand': 'Aircraft_Stand'})
+        out = flights_pd.merge(solution_df, left_on='index', right_on='flight')
+        out = out.drop(columns=['index'])
+        return out
 
 
 class OptimizeDay:
