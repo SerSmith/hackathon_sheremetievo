@@ -25,6 +25,7 @@ else:
         optim.set_model(loaded_model)
         print('модель загружена')
 
+optim.set_warm_start()
 optim.solve_model()
 solution = optim.get_solution()
 solution.to_csv(config['optimization_parameters']['output_solution_path'])
