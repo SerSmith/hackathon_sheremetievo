@@ -721,7 +721,7 @@ class OptimizeDay:
         end_dt_with_add_time = end_dt + timedelta(minutes=max(self.model.AIRCRAFT_STANDS_DATA['Taxiing_Time'].values())) + timedelta(minutes=10)
         while current_dt < end_dt_with_add_time:
             result_5minutes_list.append(current_dt)
-            current_dt = current_dt + timedelta(minutes=5)
+            current_dt = current_dt + timedelta(minutes=1)
         return result_5minutes_list
 
     @staticmethod
