@@ -369,7 +369,7 @@ class OptimizationSolution():
         flight_data['end_parking'] = flight_data['flight_datetime']
 
         taxiing_time = pd.to_timedelta(flight_data['Taxiing_Time'], unit='minutes')
-        
+
         if not taxiing_affect_parking:
             taxiing_time = pd.to_timedelta(
                 pd.Series(
@@ -377,7 +377,7 @@ class OptimizationSolution():
                 ),
                 unit='minutes'
             )
-            
+
         handling_time = pd.to_timedelta(flight_data['Handling_Time'], unit='minutes')
 
         flight_data.loc[arrival_cond, 'start_parking'] += taxiing_time[arrival_cond]
@@ -464,6 +464,9 @@ class OptimizationSolution():
         problems_list = []
         index_list = []
         for adjacent in parking_intervals:
+            for i in range(2, len(adjacent), 2):
+                if (adjacent[i-1][0] == adjacent[i][0]) and (adjacent[i][1] == adjacent[i-2][1]):
+                    adjacent[i], adjacent[i-1] = adjacent[i-1], adjacent[i]
             for i in range(0, len(adjacent), 2):
                 problems_list.append(adjacent[i][1] != adjacent[i+1][1])
                 index_list.append([adjacent[i][1], adjacent[i+1][1]])
