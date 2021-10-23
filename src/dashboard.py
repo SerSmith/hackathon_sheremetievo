@@ -94,7 +94,7 @@ def draw_dashboard(config, scenario_name):
     jetbridge_df['procent'] = jetbridge_df['procent'].apply(lambda x: str(round(x,1))+'%')
 
     with row1_1, _lock:
-        st.subheader('Количество рейсов в зависимости от использования телетрапа')
+        st.subheader(f'{current_variant} в зависимости от использования телетрапа')
         try:
             fig = go.Figure(go.Bar(
                 x=list(jetbridge_df[column]),
@@ -116,7 +116,7 @@ def draw_dashboard(config, scenario_name):
     jetbridge_df['procent'] = jetbridge_df['procent'].apply(lambda x: str(round(x,1))+'%')
 
     with row1_2, _lock:
-        st.subheader('Количество рейсов через контактные / удаленные МС')
+        st.subheader(f'{current_variant} через контактные / удаленные МС')
         try:
             fig = go.Figure(go.Bar(
                 x=list(jetbridge_df[column]),
