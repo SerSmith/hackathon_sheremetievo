@@ -34,16 +34,16 @@ def draw_dashboard(config, scenario_name):
     slider_timesample = st.slider('', min_value=START_TIME, value=[START_TIME, END_TIME], max_value=END_TIME, format=TIME_FORMAT)
 
     timesample_cond = (
-        (pd.to_datetime(data['start_parking']) >= slider_timesample[0])
+        (pd.to_datetime(data['flight_datetime']) >= slider_timesample[0])
         &
-        (pd.to_datetime(data['start_parking']) <= slider_timesample[1])
+        (pd.to_datetime(data['flight_datetime']) <= slider_timesample[1])
         )
 
     data_timesample = data[timesample_cond]
 
-    taxiing_cost = data_timesample['Taxiing_cost'].sum()
-    parking_cost = data_timesample['Parking_usage_cost'].sum()
-    bus_cost = data_timesample['Bus_usage_cost'].sum()
+    taxiing_cost = data_timesample['Taxiing_cost_solution'].sum()
+    parking_cost = data_timesample['Parking_usage_cost_solution'].sum()
+    bus_cost = data_timesample['Bus_usage_cost_solution'].sum()
     total_cost = taxiing_cost + parking_cost + bus_cost
 
     col1, col2, col3, col4 = st.columns(4)
@@ -78,19 +78,26 @@ def draw_dashboard(config, scenario_name):
     height = 250
     width = 500
     st.subheader('Statistics')
+    st.markdown("##### **Выберите один из вариантов:**")
+    variants = ['Количество рейсов', 'Количество клиентов']
+    current_variant = []
+
+    current_variant = st.selectbox('', variants)
+    map_dict = {'Количество рейсов': {'flight_number': 'count'},'Количество клиентов': {'flight_PAX': 'sum'} }
+    column = list(map_dict[current_variant].keys())[0]
     row1_space1, row1_1, row1_space2, row1_2, row1_space3 = st.columns((.1, 1, .1, 1, .1))
 
 
-    jetbridge_df = data_timesample.groupby('JetBridge_can_be_used').agg({'flight_number': 'count'}).reset_index()
+    jetbridge_df = data_timesample.groupby('JetBridge_can_be_used').agg(map_dict[current_variant]).reset_index()
     jetbridge_df['name'] = jetbridge_df['JetBridge_can_be_used'].map({False: 'Не используя телетрап',True: 'Используя телетрап'})
-    jetbridge_df['procent'] = jetbridge_df['flight_number']/sum(jetbridge_df['flight_number']) * 100
+    jetbridge_df['procent'] = jetbridge_df[column]/sum(jetbridge_df[column]) * 100
     jetbridge_df['procent'] = jetbridge_df['procent'].apply(lambda x: str(round(x,1))+'%')
 
     with row1_1, _lock:
         st.subheader('Количество рейсов в зависимости от использования телетрапа')
         try:
             fig = go.Figure(go.Bar(
-                x=list(jetbridge_df['flight_number']),
+                x=list(jetbridge_df[column]),
                 y=list(jetbridge_df['name']),
                 text = list(jetbridge_df['procent']),
                 textposition='auto',
@@ -101,18 +108,19 @@ def draw_dashboard(config, scenario_name):
         except:
             st.markdown("Cant't plot bar")
 
-    flight_id_df = data_timesample.groupby('flight_ID').agg({'flight_number': 'count'}).reset_index()
-    flight_id_df['name'] = flight_id_df['flight_ID'].map({'D': 'Domestic', 'I': 'International'})
-    flight_id_df['procent'] = flight_id_df['flight_number']/sum(flight_id_df['flight_number']) * 100
-    flight_id_df['procent'] = flight_id_df['procent'].apply(lambda x: str(round(x,1))+'%')
+    jetbridge_df['JetBridge_on_Arrival'] = data_timesample['JetBridge_on_Arrival'].map({'D': 'Y', 'I': 'Y', 'N': 'N'})
+    jetbridge_df = jetbridge_df.groupby('JetBridge_on_Arrival').agg(map_dict[current_variant]).reset_index()
+    jetbridge_df['name'] = jetbridge_df['JetBridge_on_Arrival'].map({'Y': 'Контактное МС', 'N': 'Удаленное МС'})
+    jetbridge_df['procent'] = jetbridge_df[column]/sum(jetbridge_df[column]) * 100
+    jetbridge_df['procent'] = jetbridge_df['procent'].apply(lambda x: str(round(x,1))+'%')
 
     with row1_2, _lock:
-        st.subheader('Количество внутренних или    внешних рейсов       ')
+        st.subheader('Количество рейсов через контактные / удаленные МС')
         try:
             fig = go.Figure(go.Bar(
-                x=list(flight_id_df['flight_number']),
-                y=list(flight_id_df['name']),
-                text = list(flight_id_df['procent']),
+                x=list(jetbridge_df[column]),
+                y=list(jetbridge_df['name']),
+                text = list(jetbridge_df['procent']),
                 textposition='auto',
                 orientation='h',
                 ))
@@ -120,6 +128,25 @@ def draw_dashboard(config, scenario_name):
             st.plotly_chart(fig)
         except:
             st.markdown("Cant't plot bar")
+    # flight_id_df = data_timesample.groupby('flight_ID').agg({'flight_number': 'count'}).reset_index()
+    # flight_id_df['name'] = flight_id_df['flight_ID'].map({'D': 'Domestic', 'I': 'International'})
+    # flight_id_df['procent'] = flight_id_df['flight_number']/sum(flight_id_df['flight_number']) * 100
+    # flight_id_df['procent'] = flight_id_df['procent'].apply(lambda x: str(round(x,1))+'%')
+
+    # with row1_2, _lock:
+    #     st.subheader('Количество ВВЛ или МВЛ рейсов')
+    #     try:
+    #         fig = go.Figure(go.Bar(
+    #             x=list(flight_id_df['flight_number']),
+    #             y=list(flight_id_df['name']),
+    #             text = list(flight_id_df['procent']),
+    #             textposition='auto',
+    #             orientation='h',
+    #             ))
+    #         fig.update_layout(height=height, width=width, margin=dict(l=20, r=20, t=20, b=20))
+    #         st.plotly_chart(fig)
+    #     except:
+    #         st.markdown("Cant't plot bar")
 
     row2_space1, row2_1, row2_space2, row2_2, row2_space3 = st.columns(
         (.1, 1, .1, 1, .1))
@@ -130,7 +157,7 @@ def draw_dashboard(config, scenario_name):
     flight_id_df['procent'] = flight_id_df['procent'].apply(lambda x: str(round(x,1))+'%')
 
     with row2_1, _lock:
-        st.subheader('Количество внутренних или внешних рейсов c использованием телетрапа')
+        st.subheader('Количество МВЛ/ВВЛ рейсов c использованием телетрапа')
         try:
             fig = go.Figure(go.Bar(
                 x=list(flight_id_df['flight_number']),
