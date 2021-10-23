@@ -7,7 +7,7 @@ optimization_parameters: # Настройки
   output_solution_path: 'solution.csv'   # Место записи решения
   output_results_path: 'scenarios/base_scenario.csv'   # Место записи данных для дашборда
   final_solution_path: 'solution_ready_to_send.csv'   # Решение для отправки на ЛБ
-  time_box: 20
+  time_box: 5
   model_saver:   # Настройки режим запуска
     save_model: True   # Флаг - сохранение модели
     model_path: 'pyo_model'   # Путь модели
@@ -17,8 +17,8 @@ optimization_parameters: # Настройки
     solver_name: 'cbc'   # Имя солвера
     logfile_path: 'SOLVE_LOG.log'   # Путь лога солвера
   solver_config:   # Конфиг солвера
-    ratioGap: 0.01   # Допустимое отклонение от потенциального оптимального решения
-    sec: 3600   # Верхний предел по времени работы солвера
+    ratioGap: 0.0001   # Допустимое отклонение от потенциального оптимального решения
+    sec: 7200   # Верхний предел по времени работы солвера
   #  end_date: [2019, 5, 17, 0, 5]
 dashboard_parameters: # Настройки дашборда
   solutions_paths: # Список сценариев
