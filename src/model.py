@@ -706,7 +706,8 @@ class OptimizeDay:
         """ Настройка солвера
         """
         self.opt = SolverFactory(self.config['optimization_parameters']['solver']['solver_name'], executable=self.config['optimization_parameters']['solver']['solver_path'])
-        self.opt.options = self.config['optimization_parameters']['solver_config']
+        self.opt.options['ratioGap'] = self.config['optimization_parameters']['solver_config']['ratioGap']
+        self.opt.options['sec'] = self.config['optimization_parameters']['solver_config']['sec']
 
     def __get_times(self, start_dt, end_dt):
         """Генерация листа временных интервалов, для которых будет проведена оптимизация
@@ -724,7 +725,7 @@ class OptimizeDay:
         end_dt_with_add_time = end_dt + timedelta(minutes=max(self.model.AIRCRAFT_STANDS_DATA['Taxiing_Time'].values())) + timedelta(minutes=10)
         while current_dt < end_dt_with_add_time:
             result_5minutes_list.append(current_dt)
-            current_dt = current_dt + timedelta(minutes=1)
+            current_dt = current_dt + timedelta(minutes=5)
         return result_5minutes_list
 
     @staticmethod
