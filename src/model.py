@@ -720,12 +720,12 @@ class OptimizeDay:
             list: список начал временных интервалов
         """
         result_5minutes_list = []
-        start_dt_with_add_time = start_dt - timedelta(minutes=max(self.model.AIRCRAFT_STANDS_DATA['Taxiing_Time'].values())) - timedelta(minutes=10)
+        start_dt_with_add_time = start_dt - timedelta(minutes=max(self.model.AIRCRAFT_STANDS_DATA['Taxiing_Time'].values())) - timedelta(minutes=2 * self.config['optimization_parameters']['time_box'])
         current_dt = start_dt_with_add_time
-        end_dt_with_add_time = end_dt + timedelta(minutes=max(self.model.AIRCRAFT_STANDS_DATA['Taxiing_Time'].values())) + timedelta(minutes=10)
+        end_dt_with_add_time = end_dt + timedelta(minutes=max(self.model.AIRCRAFT_STANDS_DATA['Taxiing_Time'].values())) + timedelta(minutes=2 * self.config['optimization_parameters']['time_box'])
         while current_dt < end_dt_with_add_time:
             result_5minutes_list.append(current_dt)
-            current_dt = current_dt + timedelta(minutes=5)
+            current_dt = current_dt + timedelta(minutes=self.config['optimization_parameters']['time_box'])
         return result_5minutes_list
 
     @staticmethod
@@ -792,7 +792,7 @@ class OptimizeDay:
             stand (str): МС
             time (str): рейс
         """
-        return quicksum([utils.time_calculate_func(flight, stand, time, model.FLIGHTS_DATA, model.AIRCRAFT_STANDS_DATA, model.HANGLING_TIME) * model.AS_occupied[flight, stand] for flight in model.FLIGHTS]) <= 1
+        return quicksum([utils.time_calculate_func(flight, stand, time, model.FLIGHTS_DATA, model.AIRCRAFT_STANDS_DATA, model.HANGLING_TIME, model.time_box) * model.AS_occupied[flight, stand] for flight in model.FLIGHTS]) <= 1
     
     @staticmethod
     def __two_wide_near_are_prohibited_left_func(model, stand, time):
@@ -805,13 +805,13 @@ class OptimizeDay:
         """
         if stand - 1 in model.AIRCRAFT_STANDS:
             if model.AIRCRAFT_STANDS_DATA["Terminal"][stand - 1] == model.AIRCRAFT_STANDS_DATA["Terminal"][stand]:
-                left_stand = quicksum([utils.time_calculate_func(flight, stand - 1, time, model.FLIGHTS_DATA, model.AIRCRAFT_STANDS_DATA, model.HANGLING_TIME) * model.AS_occupied[flight, stand - 1] for flight in model.FLIGHTS_WIDE])
+                left_stand = quicksum([utils.time_calculate_func(flight, stand - 1, time, model.FLIGHTS_DATA, model.AIRCRAFT_STANDS_DATA, model.HANGLING_TIME, model.time_box) * model.AS_occupied[flight, stand - 1] for flight in model.FLIGHTS_WIDE])
             else:
                 left_stand = 0
         else:
             left_stand = 0
         
-        middle_stand = quicksum([utils.time_calculate_func(flight, stand, time,  model.FLIGHTS_DATA, model.AIRCRAFT_STANDS_DATA, model.HANGLING_TIME) * model.AS_occupied[flight, stand] for flight in model.FLIGHTS_WIDE])
+        middle_stand = quicksum([utils.time_calculate_func(flight, stand, time,  model.FLIGHTS_DATA, model.AIRCRAFT_STANDS_DATA, model.HANGLING_TIME, model.time_box) * model.AS_occupied[flight, stand] for flight in model.FLIGHTS_WIDE])
 
         out = (left_stand + middle_stand) <= 1
         # pyomo не любит, когда ограничение яляется тривиальным(всегда выполняется) и  требует в таком случае возвращать pyo.Constraint.Feasible
@@ -831,13 +831,13 @@ class OptimizeDay:
         """
         if stand + 1 in model.AIRCRAFT_STANDS:
             if model.AIRCRAFT_STANDS_DATA["Terminal"][stand + 1] == model.AIRCRAFT_STANDS_DATA["Terminal"][stand]:
-                left_stand = quicksum([utils.time_calculate_func(flight, stand + 1, time, model.FLIGHTS_DATA, model.AIRCRAFT_STANDS_DATA, model.HANGLING_TIME) * model.AS_occupied[flight, stand + 1] for flight in model.FLIGHTS_WIDE])
+                left_stand = quicksum([utils.time_calculate_func(flight, stand + 1, time, model.FLIGHTS_DATA, model.AIRCRAFT_STANDS_DATA, model.HANGLING_TIME, model.time_box) * model.AS_occupied[flight, stand + 1] for flight in model.FLIGHTS_WIDE])
             else:
                 left_stand = 0
         else:
             left_stand = 0
         
-        middle_stand = quicksum([utils.time_calculate_func(flight, stand, time,  model.FLIGHTS_DATA, model.AIRCRAFT_STANDS_DATA, model.HANGLING_TIME) * model.AS_occupied[flight, stand] for flight in model.FLIGHTS_WIDE])
+        middle_stand = quicksum([utils.time_calculate_func(flight, stand, time,  model.FLIGHTS_DATA, model.AIRCRAFT_STANDS_DATA, model.HANGLING_TIME, model.time_box) * model.AS_occupied[flight, stand] for flight in model.FLIGHTS_WIDE])
 
         out = (left_stand + middle_stand) <= 1
         # pyomo не любит, когда ограничение яляется тривиальным(всегда выполняется) и  требует в таком случае возвращать pyo.Constraint.Feasible
@@ -872,6 +872,8 @@ class OptimizeDay:
         self.model.HANDLING_RATES_DATA = self.data.get_handling_rates()
         self.model.AIRCRAFT_CLASSES_DATA = self.data.get_aircraft_classes()
         self.model.HANGLING_TIME = self.data.get_handling_time()
+
+        self.model.time_box = self.config['optimization_parameters']['time_box']
 
         # Рейсы
         self.model.FLIGHTS = self.model.FLIGHTS_DATA['index'].values()

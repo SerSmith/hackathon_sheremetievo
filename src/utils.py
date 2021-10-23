@@ -28,7 +28,8 @@ def time_calculate_func(flight,
                         time,
                         FLIGHTS_DATA,
                         AIRCRAFT_STANDS_DATA,
-                        HANGLING_TIME):
+                        HANGLING_TIME,
+                        time_box):
     """Расчет занято ли место рейсом в это время
 
     Args:
@@ -38,6 +39,7 @@ def time_calculate_func(flight,
         FLIGHTS_DATA (dict): данные о рейсах
         AIRCRAFT_STANDS_DATA (dict): данные о МС
         HANGLING_TIME (dict): данные о армени процедур
+        time_box: int - кол-во минут
     """
     flight_time = FLIGHTS_DATA['flight_datetime'][flight]
     taxiing_time = int(AIRCRAFT_STANDS_DATA['Taxiing_Time'][aircraft_stand])
@@ -52,19 +54,18 @@ def time_calculate_func(flight,
     handling_time = HANGLING_TIME[column_handling_time][aircraft_class]
 
     if arrival_or_depature == 'D':
-        if (flight_time - timedelta(minutes=taxiing_time) > time) & \
-            (flight_time - timedelta(minutes=handling_time) - timedelta(minutes=taxiing_time) <= time):
-            result = 1
-        else:
-            result = 0
+        time_start = flight_time - timedelta(minutes=handling_time) - timedelta(minutes=taxiing_time)
+        time_end = flight_time - timedelta(minutes=taxiing_time)
     elif arrival_or_depature == 'A':
-        if (flight_time + timedelta(minutes=taxiing_time) <= time) & \
-            (flight_time + timedelta(minutes=handling_time) + timedelta(minutes=taxiing_time) > time):
-            result = 1
-        else:
-            result = 0
+        time_start = flight_time + timedelta(minutes=taxiing_time)
+        time_end = flight_time + timedelta(minutes=handling_time) + timedelta(minutes=taxiing_time)
     else:
         raise ValueError(f"arrival_or_depature имеет некорректное значение: {arrival_or_depature} , а должно быть A или D")
+    
+    if max(time_start, time) > min(time_end, time + timedelta(minutes=time_box)):
+        result = 0
+    else:
+        result = 1
     return result
 
 def teletrap_can_be_used_on_stand(stand, AIRCRAFT_STANDS_DATA):
