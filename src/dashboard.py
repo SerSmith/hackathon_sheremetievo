@@ -108,7 +108,8 @@ def draw_dashboard(config, scenario_name):
         except:
             st.markdown("Cant't plot bar")
 
-    jetbridge_df['JetBridge_on_Arrival'] = data_timesample['JetBridge_on_Arrival'].map({'D': 'Y', 'I': 'Y', 'N': 'N'})
+    jetbridge_df = data_timesample.copy()
+    jetbridge_df['JetBridge_on_Arrival'] = jetbridge_df['JetBridge_on_Arrival'].map({'D': 'Y', 'I': 'Y', 'N': 'N'})
     jetbridge_df = jetbridge_df.groupby('JetBridge_on_Arrival').agg(map_dict[current_variant]).reset_index()
     jetbridge_df['name'] = jetbridge_df['JetBridge_on_Arrival'].map({'Y': 'Контактное МС', 'N': 'Удаленное МС'})
     jetbridge_df['procent'] = jetbridge_df[column]/sum(jetbridge_df[column]) * 100
