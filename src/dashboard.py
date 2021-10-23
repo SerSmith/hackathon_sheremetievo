@@ -9,14 +9,11 @@ from matplotlib.backends.backend_agg import RendererAgg
 
 st.set_page_config(layout="wide")
 
-
-
 with open("optimization_config.yaml", "rb") as h:
     config = yaml.safe_load(h)
 
 
 select_scenario = st.sidebar.selectbox('Выбирите сценарий', config['dashboard_parameters']['solutions_paths'].keys())
-
 
 def draw_dashboard(config, scenario_name):
 
@@ -31,7 +28,8 @@ def draw_dashboard(config, scenario_name):
     data = pd.read_csv(config['dashboard_parameters']['solutions_paths'][scenario_name])
     data['Terminal'] = data['Terminal'].fillna('Away')
 
-    slider_timesample = st.slider('', min_value=START_TIME, value=[START_TIME, END_TIME], max_value=END_TIME, format=TIME_FORMAT)
+    slider_timesample = st.slider('', min_value=START_TIME, value=[START_TIME, END_TIME], max_value=END_TIME, format=TIME_FORMAT, 
+                                  step=datetime.timedelta(minutes=1))
 
     timesample_cond = (
         (pd.to_datetime(data['flight_datetime']) >= slider_timesample[0])
@@ -64,7 +62,9 @@ def draw_dashboard(config, scenario_name):
                             nbins=1000,
                             facet_row_spacing=0.5,
                             height=600,
-                            width=800)
+                            width=800,
+                            category_orders={'Terminal': ['Away', 1.0, 2.0, 3.0, 4.0, 5.0]}
+                            )
         fig.update_xaxes(title_text='Номер места стоянки')
         fig.update_yaxes(title_text='Рейсов за выбранный период')
         st.plotly_chart(fig)
