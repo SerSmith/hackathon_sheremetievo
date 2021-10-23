@@ -708,6 +708,7 @@ class OptimizeDay:
         self.opt = SolverFactory(self.config['optimization_parameters']['solver']['solver_name'], executable=self.config['optimization_parameters']['solver']['solver_path'])
         self.opt.options['ratioGap'] = float(self.config['optimization_parameters']['solver_config']['ratioGap'])
         self.opt.options['sec'] =int(self.config['optimization_parameters']['solver_config']['sec'])
+        self.opt.options['warmstart']=True
 
     def __get_times(self, start_dt, end_dt):
         """Генерация листа временных интервалов, для которых будет проведена оптимизация
@@ -888,7 +889,7 @@ class OptimizeDay:
     
 
         # занимаемые места (Рейс * МC) - переменные
-        self.model.AS_occupied = pyo.Var(self.model.FLIGHTS, self.model.AIRCRAFT_STANDS, within=pyo.Binary, initialize=0)
+        self.model.AS_occupied = pyo.Var(self.model.FLIGHTS, self.model.AIRCRAFT_STANDS, within=pyo.Binary)
 
         # Cтоимость руления по аэродрому
         self.model.airport_taxing_cost = pyo.Expression(self.model.FLIGHTS, rule=self.__airport_taxing_cost_func)
@@ -914,6 +915,20 @@ class OptimizeDay:
 
         self.model.every_flight_must_have_its_stand = pyo.Constraint(self.model.FLIGHTS, rule=self.__every_flight_must_have_its_stand_func)
 
+    def set_warm_start(self):
+        Timetable_baseline = pd.read_csv(os.path.join(self.config['optimization_parameters']['data_folder_path'], 'Timetable_baseline.csv'))
+        Timetable_baseline = Timetable_baseline.reset_index(drop=True)
+        Timetable_baseline['index'] = Timetable_baseline.index
+        baseline_dict = Timetable_baseline['Aircraft_Stand'].to_dict()
+        for flight in self.model.FLIGHTS:
+            for stand in self.model.AIRCRAFT_STANDS:
+                if baseline_dict[flight] == stand:
+                    print(flight, stand)
+                    self.model.AS_occupied[flight, stand].value = 1
+                    # self.model.AS_occupied[flight, stand].fixed = True
+                else:
+                    self.model.AS_occupied[flight, stand].value = 0
+        return None
 
     def get_model(self):
         return self.model
