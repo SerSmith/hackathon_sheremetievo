@@ -23,6 +23,7 @@ else:
         loaded_model = cloudpickle.load(h)
         optim = model.OptimizeDay(config)
         optim.set_model(loaded_model)
+        print('модель загружена')
 
 optim.solve_model()
 solution = optim.get_solution()

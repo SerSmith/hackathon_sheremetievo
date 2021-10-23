@@ -61,7 +61,7 @@ def time_calculate_func(flight,
         time_end = flight_time + timedelta(minutes=handling_time) + timedelta(minutes=taxiing_time)
     else:
         raise ValueError(f"arrival_or_depature имеет некорректное значение: {arrival_or_depature} , а должно быть A или D")
-    
+
     if max(time_start, time) > min(time_end, time + timedelta(minutes=time_box)):
         result = 0
     else:

@@ -706,8 +706,8 @@ class OptimizeDay:
         """ Настройка солвера
         """
         self.opt = SolverFactory(self.config['optimization_parameters']['solver']['solver_name'], executable=self.config['optimization_parameters']['solver']['solver_path'])
-        self.opt.options['ratioGap'] = self.config['optimization_parameters']['solver_config']['ratioGap']
-        self.opt.options['sec'] = self.config['optimization_parameters']['solver_config']['sec']
+        self.opt.options['ratioGap'] = float(self.config['optimization_parameters']['solver_config']['ratioGap'])
+        self.opt.options['sec'] =int(self.config['optimization_parameters']['solver_config']['sec'])
 
     def __get_times(self, start_dt, end_dt):
         """Генерация листа временных интервалов, для которых будет проведена оптимизация
@@ -924,6 +924,7 @@ class OptimizeDay:
     
     def solve_model(self):
         self.__set_solver()
+        print(self.opt.options)
         print("Модель запустилась")
         self.opt_output = self.opt.solve(self.model, logfile=self.config['optimization_parameters']['solver']['logfile_path'])
         print(self.opt_output)
