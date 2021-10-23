@@ -31,7 +31,7 @@ def draw_dashboard(config, scenario_name):
     data = pd.read_csv(config['dashboard_parameters']['solutions_paths'][scenario_name])
     data['Terminal'] = data['Terminal'].fillna('Away')
 
-    slider_timesample = st.slider('',min_value=START_TIME, value=[START_TIME, END_TIME], max_value=END_TIME, format=TIME_FORMAT)
+    slider_timesample = st.slider('', min_value=START_TIME, value=[START_TIME, END_TIME], max_value=END_TIME, format=TIME_FORMAT)
 
     timesample_cond = (
         (pd.to_datetime(data['start_parking']) >= slider_timesample[0])
