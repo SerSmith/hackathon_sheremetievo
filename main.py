@@ -29,10 +29,11 @@ solution = optim.get_solution()
 solution.to_csv(config['optimization_parameters']['output_solution_path'])
 
 # проверяем рассчет 
-solution_check = model.OptimizationSolution(data_folder=config['data_folder_path'], solution_path=config['output_solution_path'])
+solution_check = model.OptimizationSolution(data_folder=config['optimization_parameters']['data_folder_path'], solution_path=config['optimization_parameters']['output_solution_path'])
 solution_check.calculate_all_data()
 status = solution_check.solution_fullcheck()
 result = solution_check.calculate_all_data()
 result.to_csv(config['optimization_parameters']['output_results_path'])
 
-
+final_solution = solution_check.get_solution_send_format()
+final_solution.to_csv(config['optimization_parameters']['final_solution_path'])
