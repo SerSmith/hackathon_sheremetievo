@@ -26,7 +26,7 @@ else:
 
 optim.solve_model()
 solution = optim.get_solution()
-solution.to_csv(config['output_solution_path'])
+solution.to_csv(config['optimization_parameters']['output_solution_path'])
 
 # проверяем рассчет 
 solution_check = model.OptimizationSolution(data_folder=config['data_folder_path'], solution_path=config['output_solution_path'])
