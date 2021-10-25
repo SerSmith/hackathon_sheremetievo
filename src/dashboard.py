@@ -1,4 +1,5 @@
 import datetime
+from datetime import timedelta
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -15,10 +16,30 @@ with open("optimization_config.yaml", "rb") as h:
 
 select_scenario = st.sidebar.selectbox('Выбирите сценарий', config['dashboard_parameters']['solutions_paths'].keys())
 
+def get_times(start_dt, end_dt, time_box):
+    result_5minutes_list = []
+    current_dt = start_dt
+    while current_dt < end_dt:
+        result_5minutes_list.append(current_dt)
+        current_dt = current_dt + timedelta(minutes=time_box)
+    return result_5minutes_list
+
+def get_time_usage(start_dt, end_dt, time_box, result):
+    result_time_list = get_times(start_dt, end_dt, time_box)
+    df_usage = pd.DataFrame({'cnt':[0] * len(result_time_list)}, index = result_time_list)
+    for time in result_time_list:
+        for start_parking, end_parking in zip(result['start_parking'], result['end_parking']):
+            if max(start_parking, str(time)) <= min(end_parking, str(time + timedelta(minutes=time_box))):
+                df_usage.loc[time, 'cnt'] +=1
+    df_usage = df_usage.reset_index()
+    df_usage.columns = ['Время','Количество занятых МС']
+    return df_usage
+
 def draw_dashboard(config, scenario_name):
 
     START_TIME = datetime.datetime(* config['task_config']['start_date'])
     END_TIME = datetime.datetime(* config['task_config']['end_date'])
+    TIME_BOX = 30
     TIME_FORMAT = 'YYYY-MM-DD HH:mm:ss'
 
     st.title('Оптимизация расстановки самолетов по местам стоянок')
@@ -27,6 +48,9 @@ def draw_dashboard(config, scenario_name):
 
     data = pd.read_csv(config['dashboard_parameters']['solutions_paths'][scenario_name])
     data['Terminal'] = data['Terminal'].fillna('Away')
+    df_usage = get_time_usage(START_TIME, END_TIME, TIME_BOX, data)
+
+
 
     slider_timesample = st.slider('', min_value=START_TIME, value=[START_TIME, END_TIME], max_value=END_TIME, format=TIME_FORMAT, 
                                   step=datetime.timedelta(minutes=1))
@@ -38,6 +62,12 @@ def draw_dashboard(config, scenario_name):
         )
 
     data_timesample = data[timesample_cond]
+    timesample_cond_df_usage = (
+        (pd.to_datetime(df_usage['Время']) >= slider_timesample[0])
+        &
+        (pd.to_datetime(df_usage['Время']) <= slider_timesample[1])
+        )
+    df_usage_timesample = df_usage[timesample_cond_df_usage]
 
     taxiing_cost = data_timesample['Taxiing_cost_solution'].sum()
     parking_cost = data_timesample['Parking_usage_cost_solution'].sum()
@@ -72,18 +102,31 @@ def draw_dashboard(config, scenario_name):
     with col3:
         st.write("")
 
+    col1, col2, col3 = st.columns([1,5,1])
 
-
+    with col1:
+        st.write("")
+    with col2:
+        #st.subheader('Заполненность МС в зависимости от времени')
+        fig = px.line(df_usage_timesample,
+                    x="Время",
+                    y="Количество занятых МС",
+                    #title = 'Заполненность МС в зависимости от времени'
+                    )
+        st.plotly_chart(fig)
+    with col3:
+         st.write("")   
+    
     _lock = RendererAgg.lock
     height = 250
     width = 500
     st.subheader('Statistics')
     st.markdown("##### **Выберите один из вариантов:**")
-    variants = ['Количество рейсов', 'Количество клиентов']
+    variants = ['Количество рейсов', 'Количество пассажиров']
     current_variant = []
 
     current_variant = st.selectbox('', variants)
-    map_dict = {'Количество рейсов': {'flight_number': 'count'},'Количество клиентов': {'flight_PAX': 'sum'} }
+    map_dict = {'Количество рейсов': {'flight_number': 'count'},'Количество пассажиров': {'flight_PAX': 'sum'} }
     column = list(map_dict[current_variant].keys())[0]
     row1_space1, row1_1, row1_space2, row1_2, row1_space3 = st.columns((.1, 1, .1, 1, .1))
 
@@ -152,16 +195,16 @@ def draw_dashboard(config, scenario_name):
     row2_space1, row2_1, row2_space2, row2_2, row2_space3 = st.columns(
         (.1, 1, .1, 1, .1))
 
-    flight_id_df = data_timesample[data_timesample.JetBridge_can_be_used==True].groupby('flight_ID').agg({'flight_number': 'count'}).reset_index()
+    flight_id_df = data_timesample[data_timesample.JetBridge_can_be_used==True].groupby('flight_ID').agg(map_dict[current_variant]).reset_index()
     flight_id_df['name'] = flight_id_df['flight_ID'].map({'D': 'Domestic', 'I': 'International'})
-    flight_id_df['procent'] = flight_id_df['flight_number']/sum(flight_id_df['flight_number']) * 100
+    flight_id_df['procent'] = flight_id_df[column]/sum(flight_id_df[column]) * 100
     flight_id_df['procent'] = flight_id_df['procent'].apply(lambda x: str(round(x,1))+'%')
 
     with row2_1, _lock:
-        st.subheader('Количество МВЛ/ВВЛ рейсов c использованием телетрапа')
+        st.subheader(f'{current_variant}  МВЛ/ВВЛ c использованием телетрапа')
         try:
             fig = go.Figure(go.Bar(
-                x=list(flight_id_df['flight_number']),
+                x=list(flight_id_df[column]),
                 y=list(flight_id_df['name']),
                 text = list(flight_id_df['procent']),
                 textposition='auto',
@@ -173,16 +216,16 @@ def draw_dashboard(config, scenario_name):
             st.markdown("Cant't plot bar")
 
 
-    aircraft_class_df = data_timesample.groupby('Aircraft_Class').agg({'flight_number': 'count'}).reset_index()
+    aircraft_class_df = data_timesample.groupby('Aircraft_Class').agg(map_dict[current_variant]).reset_index()
     #aircraft_classs_df['name'] = aircraft_classs_df['Aircraft_Class'].map({'D': 'Domestic', 'I': 'International'})
-    aircraft_class_df['procent'] = aircraft_class_df['flight_number']/sum(aircraft_class_df['flight_number']) * 100
+    aircraft_class_df['procent'] = aircraft_class_df[column]/sum(aircraft_class_df[column]) * 100
     aircraft_class_df['procent'] = aircraft_class_df['procent'].apply(lambda x: str(round(x,1))+'%')
 
     with row2_2, _lock:
-        st.subheader('Количество рейсов в зависимости от типа ВС \n ')
+        st.subheader(f'{current_variant}  в зависимости от типа ВС \n ')
         try:
             fig = go.Figure(go.Bar(
-                x=list(aircraft_class_df['flight_number']),
+                x=list(aircraft_class_df[column]),
                 y=list(aircraft_class_df['Aircraft_Class']),
                 text = list(aircraft_class_df['procent']),
                 textposition='auto',
